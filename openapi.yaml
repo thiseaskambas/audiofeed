@@ -1,0 +1,150 @@
+openapi: 3.0.3
+info:
+  title: Audiofeed
+  description: Article → audio generation (podcast, narration, Instagram voiceover)
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, provider]
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  provider:
+                    type: string
+                    enum: [openai, google]
+
+  /generate:
+    post:
+      summary: Queue audio generation job
+      operationId: postGenerate
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, content]
+              properties:
+                type:
+                  type: string
+                  enum: [podcast, narration, instagram]
+                content:
+                  type: string
+                  description: Article HTML or plain text
+                webhook_url:
+                  type: string
+                  format: uri
+                  description: Callback URL when job completes
+                options:
+                  type: object
+                  properties:
+                    language:
+                      type: string
+                      default: en
+                    voice:
+                      type: string
+                      default: alloy
+                    word_count:
+                      type: integer
+                      minimum: 50
+                      maximum: 2000
+                      default: 400
+                    style:
+                      type: string
+                      default: engaging,fast-paced
+      responses:
+        "202":
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status]
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [queued]
+        "401":
+          description: Invalid or missing X-API-Key
+
+  /jobs/{job_id}:
+    get:
+      summary: Get job status
+      operationId: getJob
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status, type, created_at]
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+                  type:
+                    type: string
+                    enum: [podcast, narration, instagram]
+                  audio_url:
+                    type: string
+                    format: uri
+                    nullable: true
+                  duration_seconds:
+                    type: number
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+        "401":
+          description: Invalid or missing X-API-Key
+        "404":
+          description: Job not found
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Shared secret (API_SECRET)
+
+security:
+  - ApiKeyAuth: []
