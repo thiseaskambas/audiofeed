@@ -38,7 +38,11 @@ app/
 2. Install and run:
    ```bash
    pip install -r requirements.txt
-   uvicorn app.main:app --reload
+   python -m app.main
+   ```
+   Or with uvicorn directly (set `PORT` in `.env` or pass `--port`):
+   ```bash
+   uvicorn app.main:app --reload --port 8000
    ```
 3. Health:
    ```bash
@@ -83,3 +87,4 @@ See [openapi.yaml](openapi.yaml) for the full contract.
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to Google TTS JSON key file |
 | `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME` | Sevalla S3 |
 | `API_SECRET` | Shared secret for `X-API-Key` header |
+| `PORT` | Server port (default `8000`). Used when running `python -m app.main` or in Docker. |

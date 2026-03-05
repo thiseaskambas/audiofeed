@@ -38,9 +38,9 @@ def _script_openai(content: str, language: str, max_words: int) -> str:
 
 
 def _script_google(content: str, language: str, max_words: int) -> str:
-    # genai.configure() is called once at startup (app/main.py lifespan)
-    import google.generativeai as genai
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    from google import genai
+    settings = get_settings()
+    client = genai.Client(api_key=settings.google_api_key)
     lang_instruction = "Keep the script in English." if language == "en" else f"Keep the script in {language}."
     prompt = f"""{NARRATION_SYSTEM} {lang_instruction}
 
@@ -49,7 +49,7 @@ Article:
 {content[:15000]}
 
 Produce the narration script (max {max_words} words):"""
-    r = model.generate_content(prompt)
+    r = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     return (r.text or "").strip()
 
 
@@ -58,7 +58,7 @@ def _tts_openai(script: str, voice: str, out_path: str) -> None:
     settings = get_settings()
     client = OpenAI(api_key=settings.openai_api_key)
     with client.audio.speech.with_streaming_response.create(
-        model="tts-1-hd",
+        model="tts-1-hd",   
         voice=voice or "alloy",
         input=script[:4096],
     ) as response:

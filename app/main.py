@@ -20,11 +20,11 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/audio/tmp", exist_ok=True)
     os.makedirs("data/transcripts", exist_ok=True)
 
-    # Configure Google generative AI once at startup (not per-request)
+    # Expose keys via env so google clients can pick them up automatically
     if settings.provider == "google" and settings.google_api_key:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.google_api_key)
         os.environ["GEMINI_API_KEY"] = settings.google_api_key
+    if settings.google_application_credentials:
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials
 
     yield
 
@@ -37,3 +37,14 @@ app = FastAPI(
 )
 
 app.include_router(generate.router, prefix="", tags=["generate"])
+
+
+if __name__ == "__main__":
+    import uvicorn
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.port,
+        reload=True,
+    )

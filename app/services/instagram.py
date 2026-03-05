@@ -35,9 +35,9 @@ def _script_openai(content: str, language: str) -> str:
 
 
 def _script_google(content: str, language: str) -> str:
-    # genai.configure() is called once at startup (app/main.py lifespan)
-    import google.generativeai as genai
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    from google import genai
+    settings = get_settings()
+    client = genai.Client(api_key=settings.google_api_key)
     lang_instruction = "Write in English." if language == "en" else f"Write in {language}."
     prompt = f"""{INSTAGRAM_SYSTEM} {lang_instruction}
 
@@ -46,7 +46,7 @@ Article:
 {content[:8000]}
 
 Punchy 60-word hook:"""
-    r = model.generate_content(prompt)
+    r = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     return (r.text or "").strip()
 
 

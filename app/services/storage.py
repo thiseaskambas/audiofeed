@@ -36,6 +36,5 @@ def upload_audio(
         config=Config(s3={"addressing_style": "path"}),
     )
     client.upload_file(str(path), settings.s3_bucket_name, key)
-    # Public URL: endpoint is typically the bucket endpoint, e.g. https://bucket.sevalla.com
-    base = settings.s3_endpoint_url.rstrip("/")
+    base = (settings.s3_public_url or settings.s3_endpoint_url).rstrip("/")
     return f"{base}/{key}"

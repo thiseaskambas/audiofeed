@@ -32,12 +32,16 @@ class Settings(BaseSettings):
 
     # Sevalla S3
     s3_endpoint_url: str = ""
+    s3_public_url: str = ""  # public base URL for generated audio links (e.g. https://bucket.sevalla.storage)
     s3_access_key_id: str = ""
     s3_secret_access_key: str = ""
     s3_bucket_name: str = "audiofeed-audio"
 
     # Shared secret for X-API-Key
     api_secret: str = ""
+
+    # Server port (used when running via `python -m app.main` or Docker)
+    port: int = 8020
 
     @field_validator("provider", mode="before")
     @classmethod
