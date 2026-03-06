@@ -46,7 +46,7 @@ async def generate_podcast_audio(
     GEMINI_API_KEY and genai.configure() are set once at app startup (main.py lifespan).
     """
     settings = get_settings()
-    tts_model = "openai" if settings.provider == "openai" else "gemini"
+    tts_model = "openai" if settings.provider == "openai" else "geminimulti"
 
     plain = strip_html(content)
     if not plain.strip():

@@ -29,6 +29,10 @@ class GenerateOptions(BaseModel):
     voice: str = "alloy"
     word_count: int = Field(default=400, ge=50, le=2000)
     style: str = "engaging,fast-paced"
+    # Gemini TTS controls (google provider only)
+    google_voice: str = "Charon"
+    google_tts_model: str = "gemini-2.5-flash-preview-tts"
+    tts_style_prompt: str | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -112,12 +116,18 @@ async def _run_job(job_id: str) -> None:
                 language=opts.get("language", "en"),
                 voice=opts.get("voice", "alloy"),
                 word_count=opts.get("word_count", 400),
+                google_voice=opts.get("google_voice", "Charon"),
+                google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
+                tts_style_prompt=opts.get("tts_style_prompt"),
             )
             prefix = "narration"
         elif job["type"] == "instagram":
             path = await instagram.generate_instagram_audio(
                 content,
                 language=opts.get("language", "en"),
+                google_voice=opts.get("google_voice", "Aoede"),
+                google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
+                tts_style_prompt=opts.get("tts_style_prompt"),
             )
             prefix = "instagram"
         else:

@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from app.config import get_settings
-from app.services.html_utils import strip_html, to_bcp47
+from app.services.html_utils import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,13 @@ def _script_openai(content: str, language: str, max_words: int) -> str:
     return (resp.choices[0].message.content or "").strip()
 
 
-def _script_google(content: str, language: str, max_words: int) -> str:
+def _script_google(content: str, language: str, max_words: int, style_prompt: str | None = None) -> str:
     from google import genai
     settings = get_settings()
     client = genai.Client(api_key=settings.google_api_key)
     lang_instruction = "Keep the script in English." if language == "en" else f"Keep the script in {language}."
-    prompt = f"""{NARRATION_SYSTEM} {lang_instruction}
+    style_instruction = f"\nDelivery style: {style_prompt}" if style_prompt else ""
+    prompt = f"""{NARRATION_SYSTEM} {lang_instruction}{style_instruction}
 
 Article:
 
@@ -65,24 +66,37 @@ def _tts_openai(script: str, voice: str, out_path: str) -> None:
         response.stream_to_file(out_path)
 
 
-def _tts_google(script: str, out_path: str, language: str) -> None:
-    from google.cloud import texttospeech
-    client = texttospeech.TextToSpeechClient()
-    lang_code = to_bcp47(language)
-    synthesis_input = texttospeech.SynthesisInput(text=script[:5000])
-    voice_cfg = texttospeech.VoiceSelectionParams(
-        language_code=lang_code,
-        ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
+def _tts_gemini(
+    script: str,
+    out_path: str,
+    language: str,
+    voice_name: str,
+    tts_model: str,
+) -> None:
+    from google import genai
+    from google.genai import types
+    from pydub import AudioSegment
+
+    settings = get_settings()
+    client = genai.Client(api_key=settings.google_api_key)
+
+    response = client.models.generate_content(
+        model=tts_model,
+        contents=script[:4000],
+        config=types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+                ),
+            ),
+        ),
     )
-    audio_cfg = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3,
-    )
-    resp = client.synthesize_speech(
-        input=synthesis_input,
-        voice=voice_cfg,
-        audio_config=audio_cfg,
-    )
-    Path(out_path).write_bytes(resp.audio_content)
+    audio_bytes = response.candidates[0].content.parts[0].inline_data.data
+    # Gemini TTS returns PCM 24kHz 16-bit mono → encode to MP3 via pydub/ffmpeg
+    AudioSegment(
+        data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
+    ).export(out_path, format="mp3")
 
 
 async def generate_narration_audio(
@@ -91,6 +105,9 @@ async def generate_narration_audio(
     language: str = "en",
     voice: str = "alloy",
     word_count: int = 400,
+    google_voice: str = "Charon",
+    google_tts_model: str = "gemini-2.5-flash-preview-tts",
+    tts_style_prompt: str | None = None,
 ) -> str:
     """Strip HTML → LLM script → TTS → write to temp file. Returns path to MP3."""
     settings = get_settings()
@@ -105,7 +122,7 @@ async def generate_narration_audio(
         script = _script_openai(plain, language, word_count)
         _tts_openai(script, voice, out_path)
     else:
-        script = _script_google(plain, language, word_count)
-        _tts_google(script, out_path, language)
+        script = _script_google(plain, language, word_count, tts_style_prompt)
+        _tts_gemini(script, out_path, language, google_voice, google_tts_model)
 
     return out_path
