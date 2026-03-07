@@ -60,17 +60,34 @@ paths:
                     language:
                       type: string
                       default: en
+                      description: BCP-47 language code (e.g. "en", "el", "es"). Applies to all types.
                     voice:
                       type: string
                       default: alloy
+                      enum: [alloy, echo, fable, onyx, nova, shimmer]
+                      description: "OpenAI TTS voice. Used by: narration (OpenAI provider only)."
                     word_count:
                       type: integer
                       minimum: 50
                       maximum: 2000
                       default: 400
+                      description: "Target script word count. Used by: podcast, narration."
                     style:
                       type: string
                       default: engaging,fast-paced
+                      description: "Comma-separated style hints for podcastfy. Used by: podcast."
+                    google_voice:
+                      type: string
+                      default: Charon
+                      description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). Default is Charon for narration, Aoede for instagram. Used by: narration, instagram (Google provider only)."
+                    google_tts_model:
+                      type: string
+                      default: gemini-2.5-flash-preview-tts
+                      description: "Gemini TTS model ID. Used by: narration, instagram (Google provider only)."
+                    tts_style_prompt:
+                      type: string
+                      nullable: true
+                      description: "Free-text delivery style instruction appended to the LLM prompt (e.g. 'Speak slowly and warmly.'). Used by: narration, instagram (Google provider only)."
       responses:
         "202":
           description: Job queued

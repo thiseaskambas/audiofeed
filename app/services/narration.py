@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from app.config import get_settings
-from app.services.html_utils import strip_html
+from app.services.html_utils import strip_html, to_bcp47
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,7 @@ def _tts_gemini(
 
     settings = get_settings()
     client = genai.Client(api_key=settings.google_api_key)
+    lang_code = to_bcp47(language)
 
     response = client.models.generate_content(
         model=tts_model,
@@ -86,6 +87,7 @@ def _tts_gemini(
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
+                language_code=lang_code,
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
                 ),
