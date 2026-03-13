@@ -30,3 +30,7 @@ mutagen>=1.47.0
 
 # PCM → MP3 conversion for Gemini TTS output (requires ffmpeg, already in Docker)
 pydub>=0.25.0
+
+# Queue
+arq>=0.26.0
+redis[hiredis]>=5.0.0

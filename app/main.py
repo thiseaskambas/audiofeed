@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
+from arq import create_pool, Worker
+from arq.connections import RedisSettings
 
 from app.config import get_settings
 from app.routes import generate
+from app.jobs import init_redis
 
 _OPENAPI_YAML = Path(__file__).parent.parent / "openapi.yaml"
 
@@ -19,6 +23,15 @@ _OPENAPI_YAML = Path(__file__).parent.parent / "openapi.yaml"
 async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.validate_for_startup()
+
+    # Connect to Redis — fail fast if misconfigured
+    pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await pool.ping()
+    except Exception as exc:
+        await pool.close()
+        raise RuntimeError(f"Cannot connect to Redis at {settings.redis_url}: {exc}") from exc
+    init_redis(pool)
 
     # Ensure podcastfy output dirs exist (relative to CWD, which is /app in Docker)
     os.makedirs("data/audio/tmp", exist_ok=True)
@@ -30,7 +43,30 @@ async def lifespan(app: FastAPI):
     if settings.google_application_credentials:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials
 
+    # Start the ARQ worker in the same process (same pattern as BullMQ in Node.js)
+    # handle_signals=False: let uvicorn own SIGINT/SIGTERM, not the ARQ worker
+    from app.worker import WorkerSettings
+    worker = Worker(
+        functions=WorkerSettings.functions,
+        on_startup=WorkerSettings.on_startup,
+        redis_settings=WorkerSettings.redis_settings,
+        job_timeout=WorkerSettings.job_timeout,
+        keep_result=WorkerSettings.keep_result,
+        max_tries=WorkerSettings.max_tries,
+        handle_signals=False,
+    )
+    worker_task = asyncio.create_task(worker.async_run())
+
     yield
+
+    worker_task.cancel()
+    try:
+        await worker_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    finally:
+        await worker.close()
+        await pool.close()
 
 
 app = FastAPI(

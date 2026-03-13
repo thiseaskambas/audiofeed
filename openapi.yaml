@@ -78,8 +78,8 @@ paths:
                       description: "Comma-separated style hints for podcastfy. Used by: podcast."
                     google_voice:
                       type: string
-                      default: Charon
-                      description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). Default is Charon for narration, Aoede for instagram. Used by: narration, instagram (Google provider only)."
+                      nullable: true
+                      description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). If omitted, narration defaults to Charon and instagram defaults to Aoede. Used by: narration, instagram (Google provider only)."
                     google_tts_model:
                       type: string
                       default: gemini-2.5-flash-preview-tts

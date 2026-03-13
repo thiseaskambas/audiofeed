@@ -5,6 +5,7 @@ Python REST API microservice that turns article content (markdown or HTML) into 
 ## Stack
 
 - **Framework:** FastAPI
+- **Queue:** ARQ + Redis (jobs survive restarts; worker runs in-process)
 - **Podcast (dialogue):** [podcastfy](https://github.com/souzatharsis/podcastfy) (run in executor)
 - **Narration / Instagram:** LLM (gpt-4o-mini or gemini-1.5-flash) + TTS (OpenAI or Google Cloud)
 - **Storage:** boto3 → Sevalla S3
@@ -16,7 +17,8 @@ Python REST API microservice that turns article content (markdown or HTML) into 
 app/
 ├── main.py           # FastAPI app, startup validation
 ├── config.py         # Env settings + validate()
-├── jobs.py           # In-memory job store
+├── jobs.py           # Redis-backed job store
+├── worker.py         # ARQ worker (audio processing tasks)
 ├── routes/
 │   └── generate.py   # POST /generate, GET /jobs/{id}, GET /health
 └── services/
@@ -30,12 +32,16 @@ app/
 
 ## Setup
 
-1. Copy env template and set values:
+1. Start Redis locally:
+   ```bash
+   docker run -p 6379:6379 redis:7-alpine
+   ```
+2. Copy env template and set values:
    ```bash
    cp .env.example .env
-   # Edit .env: PROVIDER, API keys, S3, API_SECRET
+   # Edit .env: PROVIDER, API keys, S3, API_SECRET, REDIS_URL
    ```
-2. Install and run:
+3. Install and run:
    ```bash
    pip install -r requirements.txt
    python -m app.main
@@ -44,24 +50,24 @@ app/
    ```bash
    uvicorn app.main:app --reload --port 8000
    ```
-3. Health check and interactive docs:
+4. Health check and interactive docs:
    ```bash
    curl http://localhost:8000/health
    # Open http://localhost:8000/docs for Swagger UI
    # Raw spec: http://localhost:8000/openapi.yaml
    ```
-4. Queue a job (use [webhook.site](https://webhook.site) for callback):
+5. Queue a job (use [webhook.site](https://webhook.site) for callback):
    ```bash
    curl -X POST http://localhost:8000/generate \
      -H "Content-Type: application/json" \
      -H "X-API-Key: your-secret" \
      -d '{"type":"narration","content":"<p>Your article here.</p>","webhook_url":"https://webhook.site/your-id"}'
    ```
-5. Poll status:
+6. Poll status:
    ```bash
    curl http://localhost:8000/jobs/{job_id} -H "X-API-Key: your-secret"
    ```
-6. Docker:
+7. Docker:
    ```bash
    docker build -t audiofeed .
    docker run -p 8000:8000 --env-file .env audiofeed
@@ -137,7 +143,7 @@ All fields are optional. Unused fields for a given `type` or `provider` are sile
 | `voice` | string | `"alloy"` | `narration` (OpenAI only) | OpenAI TTS voice. One of: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
 | `word_count` | integer (50–2000) | `400` | `podcast`, `narration` | Target script length in words. |
 | `style` | string | `"engaging,fast-paced"` | `podcast` | Comma-separated style hints passed to podcastfy (e.g. `"educational,calm"`). |
-| `google_voice` | string | `"Charon"` (narration) / `"Aoede"` (instagram) | `narration`, `instagram` (Google only) | Gemini prebuilt voice name (e.g. `"Aoede"`, `"Charon"`, `"Fenrir"`, `"Kore"`, `"Puck"`). |
+| `google_voice` | string | omitted -> `"Charon"` (narration) / `"Aoede"` (instagram) | `narration`, `instagram` (Google only) | Gemini prebuilt voice name (e.g. `"Aoede"`, `"Charon"`, `"Fenrir"`, `"Kore"`, `"Puck"`). |
 | `google_tts_model` | string | `"gemini-2.5-flash-preview-tts"` | `narration`, `instagram` (Google only) | Gemini TTS model ID. |
 | `tts_style_prompt` | string | `null` | `narration`, `instagram` (Google only) | Free-text delivery instruction appended to the LLM prompt (e.g. `"Speak slowly and warmly."`). |
 
@@ -261,4 +267,5 @@ curl -X POST http://localhost:8000/generate \
 | `GOOGLE_APPLICATION_CREDENTIALS`                                                | Path to Google TTS JSON key file                                                   |
 | `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME` | Sevalla S3                                                                         |
 | `API_SECRET`                                                                    | Shared secret for `X-API-Key` header                                               |
+| `REDIS_URL`                                                                     | Redis connection string (default `redis://localhost:6379`). Required at startup.   |
 | `PORT`                                                                          | Server port (default `8000`). Used when running `python -m app.main` or in Docker. |

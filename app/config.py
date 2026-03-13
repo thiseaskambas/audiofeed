@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # Server port (used when running via `python -m app.main` or Docker)
     port: int = 8020
 
+    redis_url: str = "redis://localhost:6379"
+
     @field_validator("provider", mode="before")
     @classmethod
     def normalize_provider(cls, v: str) -> str:

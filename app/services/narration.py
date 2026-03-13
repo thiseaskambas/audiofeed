@@ -17,7 +17,7 @@ _TMP_DIR = os.path.join(_BASE_DIR, "data", "audio", "tmp")
 
 NARRATION_SYSTEM = """You are a professional narrator. Given an article, produce a clean spoken script suitable for a single narrator.
 - Use clear, conversational language. No markdown, no bullet points, no headers.
-- Maximum 400 words.
+- Keep within the requested maximum word count.
 - Write in the same language as the article unless instructed otherwise."""
 
 
@@ -26,10 +26,14 @@ def _script_openai(content: str, language: str, max_words: int) -> str:
     settings = get_settings()
     client = OpenAI(api_key=settings.openai_api_key)
     lang_instruction = "Keep the script in English." if language == "en" else f"Keep the script in {language}."
+    word_limit_instruction = f"Limit the script to {max_words} words maximum."
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": NARRATION_SYSTEM + " " + lang_instruction},
+            {
+                "role": "system",
+                "content": f"{NARRATION_SYSTEM} {lang_instruction} {word_limit_instruction}",
+            },
             {"role": "user", "content": f"Article:\n\n{content[:15000]}"},
         ],
         max_tokens=600,
