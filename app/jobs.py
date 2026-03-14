@@ -31,6 +31,9 @@ async def create_job(
     webhook_url: str | None = None,
     options: dict[str, Any] | None = None,
     content: str | None = None,
+    tenant_id: str | None = None,
+    content_type: str | None = None,
+    content_id: str | None = None,
 ) -> str:
     job_id = str(uuid.uuid4())
     payload = {
@@ -44,6 +47,9 @@ async def create_job(
         "webhook_url": webhook_url,
         "options": options or {},
         "content": content,
+        "tenant_id": tenant_id,
+        "content_type": content_type,
+        "content_id": content_id,
     }
     await get_redis().set(_KEY.format(job_id), json.dumps(payload), ex=JOB_TTL)
     return job_id

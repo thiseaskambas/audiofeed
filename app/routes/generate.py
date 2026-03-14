@@ -36,6 +36,9 @@ class GenerateRequest(BaseModel):
     content: str = Field(..., min_length=1)
     webhook_url: str | None = None
     options: GenerateOptions | None = None
+    tenant_id: str | None = None
+    content_type: str | None = None
+    content_id: str | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -51,6 +54,9 @@ class JobResponse(BaseModel):
     duration_seconds: float | None
     error: str | None
     created_at: str
+    tenant_id: str | None
+    content_type: str | None
+    content_id: str | None
 
 
 # --- Auth ---
@@ -84,6 +90,9 @@ async def generate(
         webhook_url=body.webhook_url,
         options=opts,
         content=body.content,
+        tenant_id=body.tenant_id,
+        content_type=body.content_type,
+        content_id=body.content_id,
     )
     await get_redis().enqueue_job("run_job", job_id)
     return GenerateResponse(job_id=job_id, status="queued")
@@ -105,4 +114,7 @@ async def get_job_status(
         duration_seconds=job.get("duration_seconds"),
         error=job.get("error"),
         created_at=job["created_at"],
+        tenant_id=job.get("tenant_id"),
+        content_type=job.get("content_type"),
+        content_id=job.get("content_id"),
     )

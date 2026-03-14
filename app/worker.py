@@ -67,7 +67,9 @@ async def run_job(ctx: dict, job_id: str) -> None:
             await _maybe_webhook(job)
             return
 
-        audio_url = upload_audio(path, key_prefix=prefix)
+        tenant_id = job.get("tenant_id")
+        key_prefix = f"{tenant_id}/{prefix}" if tenant_id else prefix
+        audio_url = upload_audio(path, key_prefix=key_prefix)
         duration = _duration(path)
         await update_job(job_id, status="completed", audio_url=audio_url, duration_seconds=duration)
         Path(path).unlink(missing_ok=True)
@@ -93,7 +95,8 @@ async def _maybe_webhook(job: dict) -> None:
         if final:
             await fire_webhook(job["webhook_url"], {
                 k: final.get(k) for k in
-                ("job_id", "status", "type", "audio_url", "duration_seconds", "error", "created_at")
+                ("job_id", "status", "type", "audio_url", "duration_seconds", "error", "created_at",
+                 "tenant_id", "content_type", "content_id")
             })
 
 
