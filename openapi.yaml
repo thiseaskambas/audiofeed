@@ -155,6 +155,14 @@ paths:
                       default: echo
                       enum: [alloy, echo, fable, onyx, nova, shimmer]
                       description: "OpenAI TTS voice for the podcast guest. Used by: podcast (TTS_PROVIDER=openai only)."
+                    podcast_instructions:
+                      type: string
+                      nullable: true
+                      description: >
+                        Free-text instructions for the podcast dialogue writer. Use this to provide
+                        context the LLM cannot infer from the article alone — for example, host/guest
+                        names and biographies, a custom introduction, an outro call-to-action, or
+                        preferred framing. Used by: podcast only.
       responses:
         "202":
           description: Job queued

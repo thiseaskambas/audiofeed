@@ -306,6 +306,7 @@ All fields are optional. Fields irrelevant to the current `type` or provider are
 | `podcast_voice2` | string | `"Charon"` | `podcast` (`TTS_PROVIDER=google`) | Gemini prebuilt voice for the podcast guest. |
 | `podcast_openai_voice1` | string | `"alloy"` | `podcast` (`TTS_PROVIDER=openai`) | OpenAI TTS voice for the podcast host: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
 | `podcast_openai_voice2` | string | `"echo"` | `podcast` (`TTS_PROVIDER=openai`) | OpenAI TTS voice for the podcast guest: same enum as above. |
+| `podcast_instructions` | string | `null` | `podcast` | Free-text instructions for the dialogue LLM (host/guest names, intro/outro, framing, etc.). |
 | `google_voice` | string | `"Charon"` (narration) / `"Aoede"` (instagram) | `narration`, `instagram` (`TTS_PROVIDER=google`) | Gemini prebuilt voice name. |
 | `google_tts_model` | string | `"gemini-2.5-flash-preview-tts"` | `narration`, `instagram`, `podcast` (`TTS_PROVIDER=google`) | Gemini TTS model ID. |
 | `tts_style_prompt` | string | `null` | `narration`, `instagram` | Free-text delivery instruction appended to the LLM prompt (e.g. `"Speak slowly and warmly."`). |

@@ -35,6 +35,8 @@ class GenerateOptions(BaseModel):
     # Podcast multi-speaker voices — OpenAI (tts_provider=openai)
     podcast_openai_voice1: str = "alloy"   # Host voice
     podcast_openai_voice2: str = "echo"    # Guest voice
+    # Podcast LLM script customisation
+    podcast_instructions: str | None = None  # Free-text instructions for the dialogue writer
 
 
 class GenerateRequest(BaseModel):

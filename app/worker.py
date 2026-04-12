@@ -51,6 +51,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
                 openai_voice1=opts.get("podcast_openai_voice1", "alloy"),
                 openai_voice2=opts.get("podcast_openai_voice2", "echo"),
                 google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
+                instructions=opts.get("podcast_instructions"),
             )
             prefix = "podcast"
         elif job["type"] == "narration":

@@ -24,21 +24,27 @@ Rules:
 - Write entirely in the language of the article unless instructed otherwise."""
 
 
-def _dialog_openai(content: str, language: str, word_count: int, style: str) -> tuple[str, dict]:
+def _dialog_openai(
+    content: str,
+    language: str,
+    word_count: int,
+    style: str,
+    instructions: str | None = None,
+) -> tuple[str, dict]:
     from openai import OpenAI
     settings = get_settings()
     client = OpenAI(api_key=settings.openai_api_key)
     lang_instruction = "Write in English." if language == "en" else f"Write in {language}."
+    system_content = (
+        f"{DIALOG_SYSTEM} {lang_instruction} "
+        f"Style: {style}. Target length: {word_count} words."
+    )
+    if instructions:
+        system_content += f"\n\nAdditional instructions:\n{instructions}"
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    f"{DIALOG_SYSTEM} {lang_instruction} "
-                    f"Style: {style}. Target length: {word_count} words."
-                ),
-            },
+            {"role": "system", "content": system_content},
             {"role": "user", "content": f"Article:\n\n{content[:15000]}"},
         ],
         max_tokens=min(word_count * 2, 4000),
@@ -51,16 +57,24 @@ def _dialog_openai(content: str, language: str, word_count: int, style: str) -> 
     return (resp.choices[0].message.content or "").strip(), usage
 
 
-def _dialog_google(content: str, language: str, word_count: int, style: str) -> tuple[str, dict]:
+def _dialog_google(
+    content: str,
+    language: str,
+    word_count: int,
+    style: str,
+    instructions: str | None = None,
+) -> tuple[str, dict]:
     from google import genai
     from google.genai import types
     settings = get_settings()
     client = genai.Client(api_key=settings.google_api_key)
     lang_instruction = "Write in English." if language == "en" else f"Write in {language}."
     prompt = (
-        f"{DIALOG_SYSTEM} {lang_instruction} Style: {style}. Target length: {word_count} words.\n\n"
-        f"Article:\n\n{content[:15000]}\n\nDialogue:"
+        f"{DIALOG_SYSTEM} {lang_instruction} Style: {style}. Target length: {word_count} words."
     )
+    if instructions:
+        prompt += f"\n\nAdditional instructions:\n{instructions}"
+    prompt += f"\n\nArticle:\n\n{content[:15000]}\n\nDialogue:"
     r = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
@@ -234,6 +248,7 @@ async def generate_podcast_audio(
     openai_voice1: str = "alloy",
     openai_voice2: str = "echo",
     google_tts_model: str = "gemini-2.5-flash-preview-tts",
+    instructions: str | None = None,
 ) -> tuple[str, dict]:
     """Strip HTML → LLM dialogue → TTS → MP3. Returns (path, token_usage)."""
     settings = get_settings()
@@ -245,9 +260,13 @@ async def generate_podcast_audio(
     out_path = os.path.join(_TMP_DIR, f"podcast_{uuid.uuid4().hex}.mp3")
 
     if settings.llm_provider == "openai":
-        transcript, llm_usage = _dialog_openai(plain, language, word_count, style)
+        transcript, llm_usage = _dialog_openai(
+            plain, language, word_count, style, instructions
+        )
     else:
-        transcript, llm_usage = _dialog_google(plain, language, word_count, style)
+        transcript, llm_usage = _dialog_google(
+            plain, language, word_count, style, instructions
+        )
 
     if not transcript.strip():
         raise ValueError("LLM returned an empty transcript")

@@ -1,7 +1,8 @@
 import sys
+import types as types_std
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 if "arq" not in sys.modules:
     sys.modules["arq"] = SimpleNamespace(ArqRedis=object)
@@ -94,6 +95,107 @@ class InstagramRegressionTests(unittest.TestCase):
                 "output_tokens": None,
                 "total_tokens": None,
             },
+        )
+
+
+class PodcastDialogInstructionsTests(unittest.TestCase):
+    def test_openai_dialog_appends_instructions_to_system_prompt(self) -> None:
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Host: Hi.\nGuest: Hey."))],
+            usage=SimpleNamespace(
+                prompt_tokens=1,
+                completion_tokens=2,
+                total_tokens=3,
+            ),
+        )
+        create_mock = Mock(return_value=response)
+        client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+        )
+        fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
+        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+
+        with (
+            patch.dict(sys.modules, {"openai": fake_openai}),
+            patch("app.services.podcast.get_settings", return_value=fake_settings),
+        ):
+            transcript, usage = podcast._dialog_openai(
+                "Article body",
+                "en",
+                400,
+                "educational",
+                instructions="Host is Alex. Guest is Sam.",
+            )
+
+        self.assertEqual(transcript, "Host: Hi.\nGuest: Hey.")
+        self.assertEqual(usage["total_tokens"], 3)
+        system_prompt = create_mock.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("Additional instructions:", system_prompt)
+        self.assertIn("Host is Alex. Guest is Sam.", system_prompt)
+
+    def test_openai_dialog_omits_additional_block_when_instructions_none(self) -> None:
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Host: X."))],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        )
+        create_mock = Mock(return_value=response)
+        client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+        )
+        fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
+        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+
+        with (
+            patch.dict(sys.modules, {"openai": fake_openai}),
+            patch("app.services.podcast.get_settings", return_value=fake_settings),
+        ):
+            podcast._dialog_openai("Body", "en", 100, "fast", instructions=None)
+
+        system_prompt = create_mock.call_args.kwargs["messages"][0]["content"]
+        self.assertNotIn("Additional instructions:", system_prompt)
+
+    def test_google_dialog_appends_instructions_before_article(self) -> None:
+        r = SimpleNamespace(
+            text="Host: A.\nGuest: B.",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=10,
+                candidates_token_count=5,
+                total_token_count=15,
+            ),
+        )
+        generate_mock = Mock(return_value=r)
+        client = SimpleNamespace(models=SimpleNamespace(generate_content=generate_mock))
+        genai_mod = types_std.ModuleType("google.genai")
+        genai_mod.Client = Mock(return_value=client)
+        genai_types = MagicMock()
+        genai_types.GenerateContentConfig = MagicMock(return_value="cfg")
+        genai_types.ThinkingConfig = MagicMock(return_value="think")
+        genai_mod.types = genai_types
+        google_pkg = types_std.ModuleType("google")
+        google_pkg.genai = genai_mod
+        fake_settings = SimpleNamespace(google_api_key="g-test")
+
+        mods = {"google": google_pkg, "google.genai": genai_mod}
+        with (
+            patch.dict(sys.modules, mods),
+            patch("app.services.podcast.get_settings", return_value=fake_settings),
+        ):
+            transcript, usage = podcast._dialog_google(
+                "Art text",
+                "en",
+                200,
+                "calm",
+                instructions="Use names from the briefing.",
+            )
+
+        self.assertEqual(transcript, "Host: A.\nGuest: B.")
+        self.assertEqual(usage["total_tokens"], 15)
+        prompt = generate_mock.call_args.kwargs["contents"]
+        self.assertIn("Additional instructions:", prompt)
+        self.assertIn("Use names from the briefing.", prompt)
+        self.assertIn(
+            "Use names from the briefing.\n\nArticle:\n\nArt text",
+            prompt,
         )
 
 
