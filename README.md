@@ -32,10 +32,13 @@ app/
 
 ## Setup
 
-1. Start Redis locally:
-   ```bash
-   docker run -p 6379:6379 redis:7-alpine
-   ```
+1. **Redis** — the app requires a Redis instance. Point `REDIS_URL` in `.env` to whichever you use:
+   - **Managed Redis (e.g. Sevalla):** just set `REDIS_URL` to the connection string provided by your host — no local Redis needed.
+   - **Local Redis (Docker):**
+     ```bash
+     docker run -p 6379:6379 redis:7-alpine
+     # REDIS_URL=redis://localhost:6379  (this is the default)
+     ```
 2. Copy env template and set values:
    ```bash
    cp .env.example .env
@@ -267,5 +270,5 @@ curl -X POST http://localhost:8000/generate \
 | `GOOGLE_APPLICATION_CREDENTIALS`                                                | Path to Google TTS JSON key file                                                   |
 | `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME` | Sevalla S3                                                                         |
 | `API_SECRET`                                                                    | Shared secret for `X-API-Key` header                                               |
-| `REDIS_URL`                                                                     | Redis connection string (default `redis://localhost:6379`). Required at startup.   |
+| `REDIS_URL`                                                                     | Redis connection string (default `redis://localhost:6379`). Set to your managed Redis URL (e.g. Sevalla) to skip running Redis locally. |
 | `PORT`                                                                          | Server port (default `8000`). Used when running `python -m app.main` or in Docker. |

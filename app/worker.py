@@ -39,6 +39,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
         return
 
     try:
+        token_usage = None
         if job["type"] == "podcast":
             path = await podcast.generate_podcast_audio(
                 content, language=opts.get("language", "en"),
@@ -46,7 +47,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
             )
             prefix = "podcast"
         elif job["type"] == "narration":
-            path = await narration.generate_narration_audio(
+            path, token_usage = await narration.generate_narration_audio(
                 content, language=opts.get("language", "en"),
                 voice=opts.get("voice", "alloy"), word_count=opts.get("word_count", 400),
                 google_voice=opts.get("google_voice", "Charon"),
@@ -55,7 +56,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
             )
             prefix = "narration"
         elif job["type"] == "instagram":
-            path = await instagram.generate_instagram_audio(
+            path, token_usage = await instagram.generate_instagram_audio(
                 content, language=opts.get("language", "en"),
                 google_voice=opts.get("google_voice", "Aoede"),
                 google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
@@ -71,7 +72,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
         key_prefix = f"{tenant_id}/{prefix}" if tenant_id else prefix
         audio_url = upload_audio(path, key_prefix=key_prefix)
         duration = _duration(path)
-        await update_job(job_id, status="completed", audio_url=audio_url, duration_seconds=duration)
+        await update_job(job_id, status="completed", audio_url=audio_url, duration_seconds=duration, token_usage=token_usage)
         Path(path).unlink(missing_ok=True)
         await _maybe_webhook(job)
 
@@ -95,8 +96,8 @@ async def _maybe_webhook(job: dict) -> None:
         if final:
             await fire_webhook(job["webhook_url"], {
                 k: final.get(k) for k in
-                ("job_id", "status", "type", "audio_url", "duration_seconds", "error", "created_at",
-                 "tenant_id", "content_type", "content_id")
+                ("job_id", "status", "type", "audio_url", "duration_seconds", "error", "token_usage",
+                 "created_at", "tenant_id", "content_type", "content_id")
             })
 
 

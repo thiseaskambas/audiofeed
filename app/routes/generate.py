@@ -53,6 +53,7 @@ class JobResponse(BaseModel):
     audio_url: str | None
     duration_seconds: float | None
     error: str | None
+    token_usage: dict | None
     created_at: str
     tenant_id: str | None
     content_type: str | None
@@ -113,6 +114,7 @@ async def get_job_status(
         audio_url=job.get("audio_url"),
         duration_seconds=job.get("duration_seconds"),
         error=job.get("error"),
+        token_usage=job.get("token_usage"),
         created_at=job["created_at"],
         tenant_id=job.get("tenant_id"),
         content_type=job.get("content_type"),

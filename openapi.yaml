@@ -147,9 +147,53 @@ paths:
                   error:
                     type: string
                     nullable: true
+                  token_usage:
+                    nullable: true
+                    description: API token consumption for this job. Null for podcast jobs (podcastfy does not expose usage).
+                    type: object
+                    properties:
+                      llm:
+                        type: object
+                        description: Tokens consumed by the LLM script generation step.
+                        properties:
+                          input_tokens:
+                            type: integer
+                          output_tokens:
+                            type: integer
+                          total_tokens:
+                            type: integer
+                      tts:
+                        type: object
+                        description: Tokens (or characters) consumed by the TTS step.
+                        properties:
+                          input_tokens:
+                            type: integer
+                            nullable: true
+                            description: Prompt tokens sent to the TTS model (Google provider only).
+                          output_tokens:
+                            type: integer
+                            nullable: true
+                            description: Tokens returned by the TTS model (Google provider only).
+                          total_tokens:
+                            type: integer
+                            nullable: true
+                            description: Sum of input + output tokens (Google provider only).
+                          input_characters:
+                            type: integer
+                            nullable: true
+                            description: Characters sent to TTS (OpenAI provider only — billed per character).
                   created_at:
                     type: string
                     format: date-time
+                  tenant_id:
+                    type: string
+                    nullable: true
+                  content_type:
+                    type: string
+                    nullable: true
+                  content_id:
+                    type: string
+                    nullable: true
         "401":
           description: Invalid or missing X-API-Key
         "404":

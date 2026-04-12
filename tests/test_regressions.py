@@ -7,7 +7,7 @@ if "arq" not in sys.modules:
     sys.modules["arq"] = SimpleNamespace(ArqRedis=object)
 
 from app.routes.generate import GenerateOptions, GenerateRequest, generate
-from app.services import narration
+from app.services import instagram, narration
 
 
 class GenerateRouteRegressionTests(unittest.IsolatedAsyncioTestCase):
@@ -34,7 +34,12 @@ class GenerateRouteRegressionTests(unittest.IsolatedAsyncioTestCase):
 class NarrationRegressionTests(unittest.TestCase):
     def test_openai_narration_prompt_includes_requested_word_limit(self) -> None:
         response = SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="Narration script"))]
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Narration script"))],
+            usage=SimpleNamespace(
+                prompt_tokens=10,
+                completion_tokens=20,
+                total_tokens=30,
+            ),
         )
         create_mock = Mock(return_value=response)
         client = SimpleNamespace(
@@ -47,11 +52,49 @@ class NarrationRegressionTests(unittest.TestCase):
             patch.dict(sys.modules, {"openai": fake_openai}),
             patch("app.services.narration.get_settings", return_value=fake_settings),
         ):
-            result = narration._script_openai("Article body", "en", 123)
+            script, usage = narration._script_openai("Article body", "en", 123)
 
-        self.assertEqual(result, "Narration script")
+        self.assertEqual(script, "Narration script")
+        self.assertEqual(
+            usage,
+            {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "total_tokens": 30,
+            },
+        )
         system_prompt = create_mock.call_args.kwargs["messages"][0]["content"]
         self.assertIn("123 words maximum", system_prompt)
+
+
+class InstagramRegressionTests(unittest.TestCase):
+    def test_openai_instagram_script_handles_missing_usage(self) -> None:
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Hook text"))],
+            usage=None,
+        )
+        create_mock = Mock(return_value=response)
+        client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+        )
+        fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
+        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+
+        with (
+            patch.dict(sys.modules, {"openai": fake_openai}),
+            patch("app.services.instagram.get_settings", return_value=fake_settings),
+        ):
+            script, usage = instagram._script_openai("Article body", "en")
+
+        self.assertEqual(script, "Hook text")
+        self.assertEqual(
+            usage,
+            {
+                "input_tokens": None,
+                "output_tokens": None,
+                "total_tokens": None,
+            },
+        )
 
 
 if __name__ == "__main__":

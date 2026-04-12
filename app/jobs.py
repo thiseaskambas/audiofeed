@@ -43,6 +43,7 @@ async def create_job(
         "audio_url": None,
         "duration_seconds": None,
         "error": None,
+        "token_usage": None,
         "created_at": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
         "webhook_url": webhook_url,
         "options": options or {},
@@ -67,6 +68,7 @@ async def update_job(
     audio_url: str | None = None,
     duration_seconds: int | float | None = None,
     error: str | None = None,
+    token_usage: dict[str, Any] | None = None,
 ) -> None:
     job = await get_job(job_id)
     if job is None:
@@ -79,4 +81,6 @@ async def update_job(
         job["duration_seconds"] = duration_seconds
     if error is not None:
         job["error"] = error
+    if token_usage is not None:
+        job["token_usage"] = token_usage
     await get_redis().set(_KEY.format(job_id), json.dumps(job), ex=JOB_TTL)

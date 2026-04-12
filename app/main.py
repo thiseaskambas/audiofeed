@@ -37,8 +37,10 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/audio/tmp", exist_ok=True)
     os.makedirs("data/transcripts", exist_ok=True)
 
-    # Expose keys via env so google clients can pick them up automatically
-    if settings.provider == "google" and settings.google_api_key:
+    # Expose keys via env so google clients can pick them up automatically.
+    # GEMINI_API_KEY is always set when available: podcastfy uses Gemini for
+    # LLM transcript generation regardless of which TTS provider is selected.
+    if settings.google_api_key:
         os.environ["GEMINI_API_KEY"] = settings.google_api_key
     if settings.google_application_credentials:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials

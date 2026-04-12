@@ -1,0 +1,78 @@
+# Token Usage Tracking
+
+Every completed job exposes a `token_usage` field in the `GET /jobs/{id}` response and in webhook payloads. This allows you to track API consumption and estimate costs per generation.
+
+## Response shape
+
+```json
+{
+  "token_usage": {
+    "llm": {
+      "input_tokens": 1842,
+      "output_tokens": 312,
+      "total_tokens": 2154
+    },
+    "tts": {
+      "input_tokens": 312,
+      "output_tokens": 0,
+      "total_tokens": 312,
+      "input_characters": null
+    }
+  }
+}
+```
+
+`token_usage` is `null` for `podcast` jobs (see [Limitations](#limitations)).
+
+## Fields
+
+### `llm`
+
+Tokens consumed by the LLM call that generates the spoken script.
+
+| Field | Type | Description |
+|---|---|---|
+| `input_tokens` | int | Prompt tokens sent to the model |
+| `output_tokens` | int | Completion tokens returned by the model |
+| `total_tokens` | int | Sum of input + output |
+
+### `tts`
+
+Tokens (or characters) consumed by the text-to-speech step.
+
+| Field | Type | Description |
+|---|---|---|
+| `input_tokens` | int \| null | Tokens sent to the TTS model (Gemini only) |
+| `output_tokens` | int \| null | Tokens returned by the TTS model (Gemini only) |
+| `total_tokens` | int \| null | Sum of input + output (Gemini only) |
+| `input_characters` | int \| null | Characters sent to TTS (OpenAI only — billed per character) |
+
+## Provider behaviour
+
+### OpenAI (`provider=openai`)
+
+- **LLM** (`gpt-4o-mini`): returns token counts via `response.usage`.
+- **TTS** (`tts-1-hd`): billed per character, not per token. `input_characters` is set; token fields are `null`.
+
+### Google (`provider=google`)
+
+- **LLM** (`gemini-2.5-flash`): returns token counts via `response.usage_metadata`.
+- **TTS** (`gemini-2.5-flash-preview-tts`): also returns token counts via `response.usage_metadata`. `input_characters` is `null`.
+
+## Job types
+
+| Type | `token_usage` |
+|---|---|
+| `narration` | populated with `llm` + `tts` |
+| `instagram` | populated with `llm` + `tts` |
+| `podcast` | always `null` (see below) |
+
+## Limitations
+
+### Podcast jobs
+
+The `podcast` type uses the [podcastfy](https://github.com/souzatharsis/podcastfy) library, which manages all LLM and TTS API calls internally. `generate_podcast()` returns only a file path — no usage metadata is exposed. `token_usage` will always be `null` for podcast jobs.
+
+### OpenAI TTS cost estimation
+
+Since OpenAI TTS is billed per character, use `tts.input_characters` with the current pricing for `tts-1-hd` to estimate cost. As of early 2026, pricing is $30 / 1M characters.

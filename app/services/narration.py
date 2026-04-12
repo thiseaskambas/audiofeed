@@ -21,7 +21,7 @@ NARRATION_SYSTEM = """You are a professional narrator. Given an article, produce
 - Write in the same language as the article unless instructed otherwise."""
 
 
-def _script_openai(content: str, language: str, max_words: int) -> str:
+def _script_openai(content: str, language: str, max_words: int) -> tuple[str, dict]:
     from openai import OpenAI
     settings = get_settings()
     client = OpenAI(api_key=settings.openai_api_key)
@@ -38,10 +38,15 @@ def _script_openai(content: str, language: str, max_words: int) -> str:
         ],
         max_tokens=600,
     )
-    return (resp.choices[0].message.content or "").strip()
+    usage = {
+        "input_tokens": resp.usage.prompt_tokens if resp.usage else None,
+        "output_tokens": resp.usage.completion_tokens if resp.usage else None,
+        "total_tokens": resp.usage.total_tokens if resp.usage else None,
+    }
+    return (resp.choices[0].message.content or "").strip(), usage
 
 
-def _script_google(content: str, language: str, max_words: int, style_prompt: str | None = None) -> str:
+def _script_google(content: str, language: str, max_words: int, style_prompt: str | None = None) -> tuple[str, dict]:
     from google import genai
     settings = get_settings()
     client = genai.Client(api_key=settings.google_api_key)
@@ -55,19 +60,26 @@ Article:
 
 Produce the narration script (max {max_words} words):"""
     r = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    return (r.text or "").strip()
+    usage = {
+        "input_tokens": r.usage_metadata.prompt_token_count,
+        "output_tokens": r.usage_metadata.candidates_token_count,
+        "total_tokens": r.usage_metadata.total_token_count,
+    }
+    return (r.text or "").strip(), usage
 
 
-def _tts_openai(script: str, voice: str, out_path: str) -> None:
+def _tts_openai(script: str, voice: str, out_path: str) -> dict:
     from openai import OpenAI
     settings = get_settings()
     client = OpenAI(api_key=settings.openai_api_key)
+    tts_input = script[:4096]
     with client.audio.speech.with_streaming_response.create(
-        model="tts-1-hd",   
+        model="tts-1-hd",
         voice=voice or "alloy",
-        input=script[:4096],
+        input=tts_input,
     ) as response:
         response.stream_to_file(out_path)
+    return {"input_characters": len(tts_input), "input_tokens": None, "output_tokens": None, "total_tokens": None}
 
 
 def _tts_gemini(
@@ -76,7 +88,7 @@ def _tts_gemini(
     language: str,
     voice_name: str,
     tts_model: str,
-) -> None:
+) -> dict:
     from google import genai
     from google.genai import types
     from pydub import AudioSegment
@@ -103,6 +115,12 @@ def _tts_gemini(
     AudioSegment(
         data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
     ).export(out_path, format="mp3")
+    return {
+        "input_tokens": response.usage_metadata.prompt_token_count,
+        "output_tokens": response.usage_metadata.candidates_token_count,
+        "total_tokens": response.usage_metadata.total_token_count,
+        "input_characters": None,
+    }
 
 
 async def generate_narration_audio(
@@ -114,8 +132,8 @@ async def generate_narration_audio(
     google_voice: str = "Charon",
     google_tts_model: str = "gemini-2.5-flash-preview-tts",
     tts_style_prompt: str | None = None,
-) -> str:
-    """Strip HTML → LLM script → TTS → write to temp file. Returns path to MP3."""
+) -> tuple[str, dict]:
+    """Strip HTML → LLM script → TTS → write to temp file. Returns (path, token_usage)."""
     settings = get_settings()
     plain = strip_html(content)
     if not plain.strip():
@@ -125,10 +143,10 @@ async def generate_narration_audio(
     out_path = os.path.join(_TMP_DIR, f"narration_{uuid.uuid4().hex}.mp3")
 
     if settings.provider == "openai":
-        script = _script_openai(plain, language, word_count)
-        _tts_openai(script, voice, out_path)
+        script, llm_usage = _script_openai(plain, language, word_count)
+        tts_usage = _tts_openai(script, voice, out_path)
     else:
-        script = _script_google(plain, language, word_count, tts_style_prompt)
-        _tts_gemini(script, out_path, language, google_voice, google_tts_model)
+        script, llm_usage = _script_google(plain, language, word_count, tts_style_prompt)
+        tts_usage = _tts_gemini(script, out_path, language, google_voice, google_tts_model)
 
-    return out_path
+    return out_path, {"llm": llm_usage, "tts": tts_usage}

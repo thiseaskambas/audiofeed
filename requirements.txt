@@ -7,6 +7,7 @@ pydantic-settings>=2.0
 
 # Podcast (dialogue) — sync, run via run_in_executor
 podcastfy>=0.4.0
+playwright>=1.0.0
 
 # HTML stripping (podcastfy dependency; we use it too)
 beautifulsoup4>=4.12.0
