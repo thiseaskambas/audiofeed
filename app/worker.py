@@ -41,9 +41,16 @@ async def run_job(ctx: dict, job_id: str) -> None:
     try:
         token_usage = None
         if job["type"] == "podcast":
-            path = await podcast.generate_podcast_audio(
-                content, language=opts.get("language", "en"),
-                word_count=opts.get("word_count", 400), style=opts.get("style", "engaging,fast-paced"),
+            path, token_usage = await podcast.generate_podcast_audio(
+                content,
+                language=opts.get("language", "en"),
+                word_count=opts.get("word_count", 400),
+                style=opts.get("style", "engaging,fast-paced"),
+                voice1=opts.get("podcast_voice1", "Puck"),
+                voice2=opts.get("podcast_voice2", "Charon"),
+                openai_voice1=opts.get("podcast_openai_voice1", "alloy"),
+                openai_voice2=opts.get("podcast_openai_voice2", "echo"),
+                google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
             )
             prefix = "podcast"
         elif job["type"] == "narration":

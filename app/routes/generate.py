@@ -25,10 +25,16 @@ class GenerateOptions(BaseModel):
     voice: str = "alloy"
     word_count: int = Field(default=400, ge=50, le=2000)
     style: str = "engaging,fast-paced"
-    # Gemini TTS controls (google provider only)
+    # Gemini TTS controls (google tts_provider only)
     google_voice: str | None = None
     google_tts_model: str = "gemini-2.5-flash-preview-tts"
     tts_style_prompt: str | None = None
+    # Podcast multi-speaker voices — Gemini (tts_provider=google)
+    podcast_voice1: str = "Puck"           # Host voice
+    podcast_voice2: str = "Charon"         # Guest voice
+    # Podcast multi-speaker voices — OpenAI (tts_provider=openai)
+    podcast_openai_voice1: str = "alloy"   # Host voice
+    podcast_openai_voice2: str = "echo"    # Guest voice
 
 
 class GenerateRequest(BaseModel):
@@ -73,7 +79,8 @@ def require_api_key(x_api_key: str | None = Header(None)) -> str:
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "healthy", "provider": get_settings().provider}
+    s = get_settings()
+    return {"status": "healthy", "llm_provider": s.llm_provider, "tts_provider": s.tts_provider}
 
 
 @router.post("/generate", response_model=GenerateResponse, status_code=202)

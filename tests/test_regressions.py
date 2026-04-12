@@ -7,7 +7,7 @@ if "arq" not in sys.modules:
     sys.modules["arq"] = SimpleNamespace(ArqRedis=object)
 
 from app.routes.generate import GenerateOptions, GenerateRequest, generate
-from app.services import instagram, narration
+from app.services import instagram, narration, podcast
 
 
 class GenerateRouteRegressionTests(unittest.IsolatedAsyncioTestCase):
@@ -95,6 +95,17 @@ class InstagramRegressionTests(unittest.TestCase):
                 "total_tokens": None,
             },
         )
+
+
+class PodcastChunkTranscriptTests(unittest.TestCase):
+    def test_malformed_transcript_raises_no_turns(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            podcast._chunk_transcript("No Host or Guest labels here.")
+        self.assertIn("No dialogue turns found", str(ctx.exception))
+
+    def test_valid_transcript_returns_chunks(self) -> None:
+        t = "Host: One.\nGuest: Two."
+        self.assertEqual(podcast._chunk_transcript(t), [t])
 
 
 if __name__ == "__main__":

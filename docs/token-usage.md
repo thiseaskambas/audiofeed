@@ -22,7 +22,7 @@ Every completed job exposes a `token_usage` field in the `GET /jobs/{id}` respon
 }
 ```
 
-`token_usage` is `null` for `podcast` jobs (see [Limitations](#limitations)).
+`token_usage` is present for all job types. See [Notes](#notes) for podcast-specific behaviour.
 
 ## Fields
 
@@ -65,13 +65,19 @@ Tokens (or characters) consumed by the text-to-speech step.
 |---|---|
 | `narration` | populated with `llm` + `tts` |
 | `instagram` | populated with `llm` + `tts` |
-| `podcast` | always `null` (see below) |
+| `podcast` | populated with `llm` + `tts` |
 
-## Limitations
+## Notes
 
-### Podcast jobs
+### Podcast token usage
 
-The `podcast` type uses the [podcastfy](https://github.com/souzatharsis/podcastfy) library, which manages all LLM and TTS API calls internally. `generate_podcast()` returns only a file path — no usage metadata is exposed. `token_usage` will always be `null` for podcast jobs.
+The `podcast` type runs its own LLM + TTS pipeline (no third-party library) and
+returns full `token_usage` like the other types.
+
+- `TTS_PROVIDER=google`: `tts` contains token counts from Gemini multi-speaker TTS.
+  If the transcript is chunked, counts are summed across all chunks.
+- `TTS_PROVIDER=openai`: `tts.input_characters` is the total characters sent across
+  all per-turn TTS calls; token fields are `null`.
 
 ### OpenAI TTS cost estimation
 

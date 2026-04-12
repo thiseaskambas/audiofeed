@@ -33,17 +33,12 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(f"Cannot connect to Redis at {settings.redis_url}: {exc}") from exc
     init_redis(pool)
 
-    # Ensure podcastfy output dirs exist (relative to CWD, which is /app in Docker)
+    # Ensure audio tmp dir exists (relative to CWD, which is /app in Docker)
     os.makedirs("data/audio/tmp", exist_ok=True)
-    os.makedirs("data/transcripts", exist_ok=True)
 
-    # Expose keys via env so google clients can pick them up automatically.
-    # GEMINI_API_KEY is always set when available: podcastfy uses Gemini for
-    # LLM transcript generation regardless of which TTS provider is selected.
+    # Expose GEMINI_API_KEY via env so google-genai clients can pick it up automatically.
     if settings.google_api_key:
         os.environ["GEMINI_API_KEY"] = settings.google_api_key
-    if settings.google_application_credentials:
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials
 
     # Start the ARQ worker in the same process (same pattern as BullMQ in Node.js)
     # handle_signals=False: let uvicorn own SIGINT/SIGTERM, not the ARQ worker

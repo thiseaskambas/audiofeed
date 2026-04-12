@@ -1,7 +1,35 @@
 openapi: 3.0.3
 info:
   title: Audiofeed
-  description: Article → audio generation (podcast, narration, Instagram voiceover)
+  description: |
+    Article → audio generation (podcast, narration, Instagram voiceover).
+
+    ## Async flow
+
+    All generation is asynchronous. The typical integration pattern is:
+
+    1. **POST /generate** — submit a job. Returns `job_id` immediately (HTTP 202).
+    2. **Poll GET /jobs/{job_id}** — repeat until `status` is `completed` or `failed`.
+       There is no server-sent push; you must poll. A 2–5 s interval is reasonable.
+    3. **Or: use `webhook_url`** — pass a callback URL in the request body.
+       Audiofeed will POST the completed job payload to that URL instead of (or in
+       addition to) polling. See [Webhook callback](#/paths/~1generate/post/callbacks/jobEvent).
+
+    Jobs expire from Redis after **24 hours**. The worker makes **one attempt**
+    (no auto-retry). On failure, `status` becomes `failed` and `error` contains
+    the exception message.
+
+    ## Authentication
+
+    All endpoints except `GET /health` require an `X-API-Key` header matching
+    the server's `API_SECRET` env var.
+
+    ## Error responses
+
+    Error responses follow FastAPI's default shape:
+    ```json
+    { "detail": "<human-readable message>" }
+    ```
   version: 0.1.0
 
 servers:
@@ -21,14 +49,19 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, provider]
+                required: [status, llm_provider, tts_provider]
                 properties:
                   status:
                     type: string
                     example: healthy
-                  provider:
+                  llm_provider:
                     type: string
                     enum: [openai, google]
+                    description: Provider used for script/dialogue generation.
+                  tts_provider:
+                    type: string
+                    enum: [openai, google]
+                    description: Provider used for text-to-speech synthesis.
 
   /generate:
     post:
@@ -53,7 +86,23 @@ paths:
                 webhook_url:
                   type: string
                   format: uri
-                  description: Callback URL when job completes
+                  description: |
+                    Callback URL. When the job reaches `completed` or `failed`,
+                    Audiofeed fires a POST to this URL with the full job payload
+                    (same shape as `GET /jobs/{job_id}`). The call is best-effort:
+                    failures are logged and do not affect the job result.
+                tenant_id:
+                  type: string
+                  nullable: true
+                  description: Caller-supplied tenant identifier. Used as an S3 key prefix and echoed back on the job and webhook payloads.
+                content_type:
+                  type: string
+                  nullable: true
+                  description: Caller-supplied content type label (e.g. "article"). Echoed back on the job and webhook payloads.
+                content_id:
+                  type: string
+                  nullable: true
+                  description: Caller-supplied content identifier. Echoed back on the job and webhook payloads.
                 options:
                   type: object
                   properties:
@@ -65,7 +114,7 @@ paths:
                       type: string
                       default: alloy
                       enum: [alloy, echo, fable, onyx, nova, shimmer]
-                      description: "OpenAI TTS voice. Used by: narration (OpenAI provider only)."
+                      description: "OpenAI TTS voice. Used by: narration (TTS_PROVIDER=openai only)."
                     word_count:
                       type: integer
                       minimum: 50
@@ -75,19 +124,37 @@ paths:
                     style:
                       type: string
                       default: engaging,fast-paced
-                      description: "Comma-separated style hints for podcastfy. Used by: podcast."
+                      description: "Comma-separated style hints for the dialogue LLM (e.g. \"educational,calm\"). Used by: podcast."
                     google_voice:
                       type: string
                       nullable: true
-                      description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). If omitted, narration defaults to Charon and instagram defaults to Aoede. Used by: narration, instagram (Google provider only)."
+                      description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). If omitted, narration defaults to Charon and instagram defaults to Aoede. Used by: narration, instagram (TTS_PROVIDER=google only)."
                     google_tts_model:
                       type: string
                       default: gemini-2.5-flash-preview-tts
-                      description: "Gemini TTS model ID. Used by: narration, instagram (Google provider only)."
+                      description: "Gemini TTS model ID. Used by: narration, instagram, podcast (TTS_PROVIDER=google only)."
                     tts_style_prompt:
                       type: string
                       nullable: true
-                      description: "Free-text delivery style instruction appended to the LLM prompt (e.g. 'Speak slowly and warmly.'). Used by: narration, instagram (Google provider only)."
+                      description: "Free-text delivery style instruction appended to the LLM prompt (e.g. 'Speak slowly and warmly.'). Used by: narration, instagram (TTS_PROVIDER=google only)."
+                    podcast_voice1:
+                      type: string
+                      default: Puck
+                      description: "Gemini prebuilt voice for the podcast host. Used by: podcast (TTS_PROVIDER=google only). See google_voice for available names."
+                    podcast_voice2:
+                      type: string
+                      default: Charon
+                      description: "Gemini prebuilt voice for the podcast guest. Used by: podcast (TTS_PROVIDER=google only). See google_voice for available names."
+                    podcast_openai_voice1:
+                      type: string
+                      default: alloy
+                      enum: [alloy, echo, fable, onyx, nova, shimmer]
+                      description: "OpenAI TTS voice for the podcast host. Used by: podcast (TTS_PROVIDER=openai only)."
+                    podcast_openai_voice2:
+                      type: string
+                      default: echo
+                      enum: [alloy, echo, fable, onyx, nova, shimmer]
+                      description: "OpenAI TTS voice for the podcast guest. Used by: podcast (TTS_PROVIDER=openai only)."
       responses:
         "202":
           description: Job queued
@@ -105,6 +172,29 @@ paths:
                     enum: [queued]
         "401":
           description: Invalid or missing X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+      callbacks:
+        jobEvent:
+          '{$request.body#/webhook_url}':
+            post:
+              summary: Webhook — job completed or failed
+              description: |
+                Fired once when the job reaches `completed` or `failed`.
+                The body is identical to the `GET /jobs/{job_id}` response.
+                The call is best-effort (one attempt, 30 s timeout).
+                Your endpoint should respond with any 2xx status to acknowledge receipt.
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/JobStatus'
+              responses:
+                "200":
+                  description: Webhook acknowledged
 
   /jobs/{job_id}:
     get:
@@ -125,87 +215,118 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [job_id, status, type, created_at]
-                properties:
-                  job_id:
-                    type: string
-                    format: uuid
-                  status:
-                    type: string
-                    enum: [queued, processing, completed, failed]
-                  type:
-                    type: string
-                    enum: [podcast, narration, instagram]
-                  audio_url:
-                    type: string
-                    format: uri
-                    nullable: true
-                  duration_seconds:
-                    type: number
-                    nullable: true
-                  error:
-                    type: string
-                    nullable: true
-                  token_usage:
-                    nullable: true
-                    description: API token consumption for this job. Null for podcast jobs (podcastfy does not expose usage).
-                    type: object
-                    properties:
-                      llm:
-                        type: object
-                        description: Tokens consumed by the LLM script generation step.
-                        properties:
-                          input_tokens:
-                            type: integer
-                          output_tokens:
-                            type: integer
-                          total_tokens:
-                            type: integer
-                      tts:
-                        type: object
-                        description: Tokens (or characters) consumed by the TTS step.
-                        properties:
-                          input_tokens:
-                            type: integer
-                            nullable: true
-                            description: Prompt tokens sent to the TTS model (Google provider only).
-                          output_tokens:
-                            type: integer
-                            nullable: true
-                            description: Tokens returned by the TTS model (Google provider only).
-                          total_tokens:
-                            type: integer
-                            nullable: true
-                            description: Sum of input + output tokens (Google provider only).
-                          input_characters:
-                            type: integer
-                            nullable: true
-                            description: Characters sent to TTS (OpenAI provider only — billed per character).
-                  created_at:
-                    type: string
-                    format: date-time
-                  tenant_id:
-                    type: string
-                    nullable: true
-                  content_type:
-                    type: string
-                    nullable: true
-                  content_id:
-                    type: string
-                    nullable: true
+                $ref: '#/components/schemas/JobStatus'
         "401":
           description: Invalid or missing X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
         "404":
-          description: Job not found
+          description: Job not found (unknown ID or expired after 24 h)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
 
 components:
+  schemas:
+    ErrorDetail:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message.
+          example: Invalid or missing X-API-Key
+
+    JobStatus:
+      type: object
+      required: [job_id, status, type, created_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        type:
+          type: string
+          enum: [podcast, narration, instagram]
+        audio_url:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Public S3 URL of the generated MP3. Populated only when `status=completed`.
+            The URL is served from `S3_PUBLIC_URL` (or `S3_ENDPOINT_URL` as fallback).
+            Key layout: `{tenant_id}/{type}/{filename}.mp3` when tenant_id is set,
+            otherwise `{type}/{filename}.mp3`.
+        duration_seconds:
+          type: number
+          nullable: true
+          description: Duration of the generated audio in seconds. Populated only when `status=completed`.
+        error:
+          type: string
+          nullable: true
+          description: Exception message. Populated only when `status=failed`.
+        token_usage:
+          nullable: true
+          description: |
+            API token consumption for this job. Present for all job types.
+            The `tts` sub-object uses token fields for Google TTS and `input_characters`
+            for OpenAI TTS (billed per character).
+          type: object
+          properties:
+            llm:
+              type: object
+              description: Tokens consumed by the LLM script generation step.
+              properties:
+                input_tokens:
+                  type: integer
+                output_tokens:
+                  type: integer
+                total_tokens:
+                  type: integer
+            tts:
+              type: object
+              description: Tokens (or characters) consumed by the TTS step.
+              properties:
+                input_tokens:
+                  type: integer
+                  nullable: true
+                  description: Prompt tokens sent to the TTS model (Google TTS only).
+                output_tokens:
+                  type: integer
+                  nullable: true
+                  description: Tokens returned by the TTS model (Google TTS only).
+                total_tokens:
+                  type: integer
+                  nullable: true
+                  description: Sum of input + output tokens (Google TTS only).
+                input_characters:
+                  type: integer
+                  nullable: true
+                  description: Characters sent to TTS (OpenAI TTS only — billed per character).
+        created_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        content_id:
+          type: string
+          nullable: true
+
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
       in: header
       name: X-API-Key
-      description: Shared secret (API_SECRET)
+      description: Shared secret (API_SECRET env var)
 
 security:
   - ApiKeyAuth: []

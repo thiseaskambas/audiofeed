@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from typing import Literal
 
@@ -20,15 +19,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Provider: "openai" or "google" (LLM + TTS)
-    provider: Provider = "openai"
+    # LLM provider: which model generates dialogue/scripts ("openai" or "google")
+    llm_provider: Provider = "openai"
+    # TTS provider: which engine synthesises audio ("openai" or "google")
+    tts_provider: Provider = "openai"
 
-    # OpenAI (required if provider=openai)
+    # OpenAI (required if llm_provider=openai or tts_provider=openai)
     openai_api_key: str | None = None
 
-    # Google (required if provider=google)
+    # Google (required if llm_provider=google or tts_provider=google)
     google_api_key: str | None = None
-    google_application_credentials: str | None = None
 
     # Sevalla S3
     s3_endpoint_url: str = ""
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379"
 
-    @field_validator("provider", mode="before")
+    @field_validator("llm_provider", "tts_provider", mode="before")
     @classmethod
     def normalize_provider(cls, v: str) -> str:
         if isinstance(v, str):
@@ -53,23 +53,20 @@ class Settings(BaseSettings):
         return v
 
     def validate_for_startup(self) -> None:
-        """Raise ValueError if required env vars for current provider are missing."""
-        if self.provider == "openai":
+        """Raise ValueError if required env vars for current providers are missing."""
+        needs_openai = self.llm_provider == "openai" or self.tts_provider == "openai"
+        needs_google = self.llm_provider == "google" or self.tts_provider == "google"
+
+        if needs_openai:
             if not (self.openai_api_key and self.openai_api_key.startswith("sk-")):
                 raise ValueError(
-                    "PROVIDER=openai requires OPENAI_API_KEY to be set (starts with sk-)"
+                    "OPENAI_API_KEY must be set (starts with sk-) when LLM_PROVIDER=openai or TTS_PROVIDER=openai"
                 )
-        elif self.provider == "google":
+        if needs_google:
             if not self.google_api_key:
-                raise ValueError("PROVIDER=google requires GOOGLE_API_KEY to be set")
-            if not self.google_application_credentials or not os.path.isfile(
-                self.google_application_credentials
-            ):
                 raise ValueError(
-                    "PROVIDER=google requires GOOGLE_APPLICATION_CREDENTIALS to point to a valid JSON file"
+                    "GOOGLE_API_KEY must be set when LLM_PROVIDER=google or TTS_PROVIDER=google"
                 )
-        else:
-            raise ValueError('PROVIDER must be "openai" or "google"')
 
         if not self.api_secret:
             raise ValueError("API_SECRET must be set (used for X-API-Key header)")

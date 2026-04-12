@@ -132,11 +132,14 @@ async def generate_instagram_audio(
     os.makedirs(_TMP_DIR, exist_ok=True)
     out_path = os.path.join(_TMP_DIR, f"instagram_{uuid.uuid4().hex}.mp3")
 
-    if settings.provider == "openai":
+    if settings.llm_provider == "openai":
         script, llm_usage = _script_openai(plain, language)
-        tts_usage = _tts_openai(script, out_path)
     else:
         script, llm_usage = _script_google(plain, language, tts_style_prompt)
+
+    if settings.tts_provider == "openai":
+        tts_usage = _tts_openai(script, out_path)
+    else:
         tts_usage = _tts_gemini(script, out_path, language, google_voice, google_tts_model)
 
     return out_path, {"llm": llm_usage, "tts": tts_usage}
