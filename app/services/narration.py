@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -143,14 +144,19 @@ async def generate_narration_audio(
     out_path = os.path.join(_TMP_DIR, f"narration_{uuid.uuid4().hex}.mp3")
 
     if settings.llm_provider == "openai":
-        script, llm_usage = _script_openai(plain, language, word_count)
+        script, llm_usage = await asyncio.to_thread(
+            _script_openai, plain, language, word_count
+        )
     else:
-        script, llm_usage = _script_google(plain, language, word_count, tts_style_prompt)
+        script, llm_usage = await asyncio.to_thread(
+            _script_google, plain, language, word_count, tts_style_prompt
+        )
 
     if settings.tts_provider == "openai":
-        tts_usage = _tts_openai(script, voice, out_path)
+        tts_usage = await asyncio.to_thread(_tts_openai, script, voice, out_path)
     else:
-        tts_usage = _tts_gemini(
+        tts_usage = await asyncio.to_thread(
+            _tts_gemini,
             script,
             out_path,
             language,

@@ -1,6 +1,8 @@
 """ARQ worker: processes audio generation jobs from the Redis queue."""
 from __future__ import annotations
+import asyncio
 import logging, os
+from functools import partial
 from pathlib import Path
 import arq
 from arq.connections import RedisSettings
@@ -87,8 +89,10 @@ async def run_job(ctx: dict, job_id: str) -> None:
 
         tenant_id = job.get("tenant_id")
         key_prefix = f"{tenant_id}/{prefix}" if tenant_id else prefix
-        audio_url = upload_audio(path, key_prefix=key_prefix)
-        duration = _duration(path)
+        audio_url = await asyncio.to_thread(
+            partial(upload_audio, path, key_prefix=key_prefix)
+        )
+        duration = await asyncio.to_thread(_duration, path)
         await update_job(job_id, status="completed", audio_url=audio_url, duration_seconds=duration, token_usage=token_usage)
         Path(path).unlink(missing_ok=True)
         await _maybe_webhook(job)

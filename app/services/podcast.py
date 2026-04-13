@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -277,19 +278,30 @@ async def generate_podcast_audio(
     out_path = os.path.join(_TMP_DIR, f"podcast_{uuid.uuid4().hex}.mp3")
 
     if settings.llm_provider == "openai":
-        transcript, llm_usage = _dialog_openai(
-            plain, language, word_count, style, instructions
+        transcript, llm_usage = await asyncio.to_thread(
+            _dialog_openai,
+            plain,
+            language,
+            word_count,
+            style,
+            instructions,
         )
     else:
-        transcript, llm_usage = _dialog_google(
-            plain, language, word_count, style, instructions
+        transcript, llm_usage = await asyncio.to_thread(
+            _dialog_google,
+            plain,
+            language,
+            word_count,
+            style,
+            instructions,
         )
 
     if not transcript.strip():
         raise ValueError("LLM returned an empty transcript")
 
     if settings.tts_provider == "google":
-        tts_usage = _tts_gemini_multispeaker(
+        tts_usage = await asyncio.to_thread(
+            _tts_gemini_multispeaker,
             transcript,
             out_path,
             voice1,
@@ -298,6 +310,12 @@ async def generate_podcast_audio(
             language,
         )
     else:
-        tts_usage = _tts_openai_turns(transcript, out_path, voice1=openai_voice1, voice2=openai_voice2)
+        tts_usage = await asyncio.to_thread(
+            _tts_openai_turns,
+            transcript,
+            out_path,
+            openai_voice1,
+            openai_voice2,
+        )
 
     return out_path, {"llm": llm_usage, "tts": tts_usage}
