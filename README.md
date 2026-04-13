@@ -8,8 +8,8 @@ Python REST microservice that turns article content (HTML or plain text) into au
 |---|---|
 | Framework | FastAPI |
 | Job queue | ARQ + Redis (worker runs in-process) |
-| LLM (scripts & dialogue) | OpenAI `gpt-4o-mini` or Google `gemini-2.5-flash` |
-| TTS | OpenAI `tts-1-hd` or Google Gemini TTS (`gemini-2.5-flash-preview-tts`) |
+| LLM (scripts & dialogue) | OpenAI (`OPENAI_LLM_MODEL`) or Google (`GOOGLE_LLM_MODEL`) |
+| TTS | OpenAI (`OPENAI_TTS_MODEL`) or Google (`GOOGLE_TTS_MODEL`) |
 | Podcast TTS | Google Gemini multi-speaker TTS (single API call, two voices) |
 | NotebookLM podcast | Google NotebookLM Enterprise API (end-to-end, no LLM/TTS steps) |
 | Storage | boto3 → Sevalla S3 |
@@ -102,13 +102,13 @@ Host: Good point. Now, the data shows...
 
 Every line must begin with exactly `Host: ` or `Guest: ` (colon + space). No markdown, no stage directions, no blank lines. The `style` option is passed as a hint (e.g. `"educational,conversational"`).
 
-- `LLM_PROVIDER=openai` → GPT-4o-mini, `max_tokens = min(word_count × 3, 8000)`
-- `LLM_PROVIDER=google` → Gemini 2.5 Flash with `thinking_budget=0` (disables the reasoning scratchpad that would otherwise pollute the output)
+- `LLM_PROVIDER=openai` → model from `OPENAI_LLM_MODEL`, `max_tokens = min(word_count × 3, 8000)`
+- `LLM_PROVIDER=google` → model from `GOOGLE_LLM_MODEL` with `thinking_budget=0` (disables the reasoning scratchpad that would otherwise pollute the output)
 
 **Step 2 — Audio synthesis (TTS)**
 
 - `TTS_PROVIDER=google` → **Gemini multi-speaker TTS**: the whole transcript is sent in a single API call using `MultiSpeakerVoiceConfig`. Speaker labels `"Host"` and `"Guest"` in the text map to two prebuilt Gemini voices (defaults: `Puck` for Host, `Charon` for Guest). If the transcript exceeds ~3000 characters it is split at turn boundaries into chunks; each chunk is synthesised separately and the resulting PCM blobs are concatenated with pydub before being encoded to MP3.
-- `TTS_PROVIDER=openai` → **OpenAI TTS per turn**: each `Host:` / `Guest:` line is sent as a separate OpenAI `tts-1-hd` call with the mapped voice, and the resulting MP3 segments are concatenated with pydub.
+- `TTS_PROVIDER=openai` → **OpenAI TTS per turn**: each `Host:` / `Guest:` line is sent as a separate OpenAI call using `OPENAI_TTS_MODEL` with the mapped voice, and the resulting MP3 segments are concatenated with pydub.
 
 Returns `(path_to_mp3, token_usage_dict)`.
 
@@ -124,10 +124,10 @@ Single-speaker audio of the article content.
 
 LLM and TTS providers are controlled independently:
 
-- `LLM_PROVIDER=openai` → GPT-4o-mini
-- `LLM_PROVIDER=google` → Gemini 2.5 Flash
-- `TTS_PROVIDER=openai` → `tts-1-hd` with `voice` option (default `alloy`)
-- `TTS_PROVIDER=google` → Gemini TTS with `google_voice` / `google_tts_model` options; PCM 24kHz → MP3 via pydub
+- `LLM_PROVIDER=openai` → model from `OPENAI_LLM_MODEL`
+- `LLM_PROVIDER=google` → model from `GOOGLE_LLM_MODEL`
+- `TTS_PROVIDER=openai` → model from `OPENAI_TTS_MODEL` with `voice` option (default `alloy`)
+- `TTS_PROVIDER=google` → Gemini TTS with `google_voice` / `google_tts_model` options; if `google_tts_model` is omitted, `GOOGLE_TTS_MODEL` is used. PCM 24kHz → MP3 via pydub
 
 Returns `(path_to_mp3, token_usage_dict)`.
 
@@ -245,7 +245,11 @@ Raw OpenAPI spec: http://localhost:8020/openapi.yaml
 | `LLM_PROVIDER` | yes | `openai` | Which model generates scripts and dialogue. `openai` or `google`. |
 | `TTS_PROVIDER` | yes | `openai` | Which engine synthesises audio. `openai` or `google`. |
 | `OPENAI_API_KEY` | if either provider is `openai` | — | OpenAI API key (`sk-...`) |
+| `OPENAI_LLM_MODEL` | no | `gpt-4o-mini` | OpenAI model ID used for script/dialogue generation when `LLM_PROVIDER=openai`. |
+| `OPENAI_TTS_MODEL` | no | `tts-1-hd` | OpenAI speech model ID used when `TTS_PROVIDER=openai`. |
 | `GOOGLE_API_KEY` | if either provider is `google` | — | Google / Gemini API key |
+| `GOOGLE_LLM_MODEL` | no | `gemini-2.5-flash` | Google Gemini model ID used for script/dialogue generation when `LLM_PROVIDER=google`. |
+| `GOOGLE_TTS_MODEL` | no | `gemini-2.5-flash-preview-tts` | Default Google TTS model ID used when `TTS_PROVIDER=google`. |
 | `S3_ENDPOINT_URL` | yes | — | S3-compatible endpoint (e.g. `https://storage.sevalla.com`) |
 | `S3_PUBLIC_URL` | no | falls back to endpoint | Public base URL for generated audio links |
 | `S3_ACCESS_KEY_ID` | yes | — | S3 access key |
@@ -364,7 +368,7 @@ All fields are optional. Fields irrelevant to the current `type` or provider are
 | `podcast_openai_voice2` | string | `"echo"` | `podcast` (`TTS_PROVIDER=openai`) | OpenAI TTS voice for the podcast guest: same enum as above. |
 | `podcast_instructions` | string | `null` | `podcast` | Free-text instructions for the dialogue LLM (host/guest names, intro/outro, framing, etc.). |
 | `google_voice` | string | `"Charon"` (narration) / `"Aoede"` (instagram) | `narration`, `instagram` (`TTS_PROVIDER=google`) | Gemini prebuilt voice name. |
-| `google_tts_model` | string | `"gemini-2.5-flash-preview-tts"` | `narration`, `instagram`, `podcast` (`TTS_PROVIDER=google`) | Gemini TTS model ID. |
+| `google_tts_model` | string | `GOOGLE_TTS_MODEL` | `narration`, `instagram`, `podcast` (`TTS_PROVIDER=google`) | Optional per-request override for the Google TTS model ID. |
 | `tts_style_prompt` | string | `null` | `narration`, `instagram` | Free-text delivery instruction appended to the LLM prompt (e.g. `"Speak slowly and warmly."`). |
 | `notebooklm_length` | `"SHORT"` \| `"STANDARD"` | `"STANDARD"` | `notebooklm_podcast` | Podcast length. `SHORT` ≈ 4–5 min, `STANDARD` ≈ 10 min. |
 | `notebooklm_focus` | string | `null` | `notebooklm_podcast` | Optional topic focus hint passed to NotebookLM (e.g. `"Focus on the economic implications"`). |

@@ -53,7 +53,7 @@ class NarrationRegressionTests(unittest.TestCase):
             chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
         )
         fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
-        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+        fake_settings = SimpleNamespace(openai_api_key="sk-test", openai_llm_model="oai-llm-test")
 
         with (
             patch.dict(sys.modules, {"openai": fake_openai}),
@@ -72,6 +72,7 @@ class NarrationRegressionTests(unittest.TestCase):
         )
         system_prompt = create_mock.call_args.kwargs["messages"][0]["content"]
         self.assertIn("123 words maximum", system_prompt)
+        self.assertEqual(create_mock.call_args.kwargs["model"], "oai-llm-test")
 
 
 class InstagramRegressionTests(unittest.TestCase):
@@ -85,7 +86,7 @@ class InstagramRegressionTests(unittest.TestCase):
             chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
         )
         fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
-        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+        fake_settings = SimpleNamespace(openai_api_key="sk-test", openai_llm_model="oai-llm-test")
 
         with (
             patch.dict(sys.modules, {"openai": fake_openai}),
@@ -102,6 +103,7 @@ class InstagramRegressionTests(unittest.TestCase):
                 "total_tokens": None,
             },
         )
+        self.assertEqual(create_mock.call_args.kwargs["model"], "oai-llm-test")
 
 
 class PodcastDialogInstructionsTests(unittest.TestCase):
@@ -119,7 +121,7 @@ class PodcastDialogInstructionsTests(unittest.TestCase):
             chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
         )
         fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
-        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+        fake_settings = SimpleNamespace(openai_api_key="sk-test", openai_llm_model="oai-llm-test")
 
         with (
             patch.dict(sys.modules, {"openai": fake_openai}),
@@ -149,7 +151,7 @@ class PodcastDialogInstructionsTests(unittest.TestCase):
             chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
         )
         fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
-        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+        fake_settings = SimpleNamespace(openai_api_key="sk-test", openai_llm_model="oai-llm-test")
 
         with (
             patch.dict(sys.modules, {"openai": fake_openai}),
@@ -179,7 +181,7 @@ class PodcastDialogInstructionsTests(unittest.TestCase):
         genai_mod.types = genai_types
         google_pkg = types_std.ModuleType("google")
         google_pkg.genai = genai_mod
-        fake_settings = SimpleNamespace(google_api_key="g-test")
+        fake_settings = SimpleNamespace(google_api_key="g-test", google_llm_model="google-llm-test")
 
         mods = {"google": google_pkg, "google.genai": genai_mod}
         with (
@@ -203,6 +205,7 @@ class PodcastDialogInstructionsTests(unittest.TestCase):
             "Use names from the briefing.\n\nArticle:\n\nArt text",
             prompt,
         )
+        self.assertEqual(generate_mock.call_args.kwargs["model"], "google-llm-test")
 
     def test_openai_dialog_uses_expanded_max_tokens_formula(self) -> None:
         response = SimpleNamespace(
@@ -214,7 +217,7 @@ class PodcastDialogInstructionsTests(unittest.TestCase):
             chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
         )
         fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
-        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+        fake_settings = SimpleNamespace(openai_api_key="sk-test", openai_llm_model="oai-llm-test")
 
         with (
             patch.dict(sys.modules, {"openai": fake_openai}),
@@ -257,6 +260,7 @@ class WorkerDefaultsRegressionTests(unittest.IsolatedAsyncioTestCase):
             await worker.run_job({}, "job-podcast")
 
         self.assertEqual(podcast_mock.await_args.kwargs["word_count"], 600)
+        self.assertIsNone(podcast_mock.await_args.kwargs["google_tts_model"])
 
     async def test_narration_worker_default_word_count_remains_400(self) -> None:
         narration_job = {
@@ -279,6 +283,32 @@ class WorkerDefaultsRegressionTests(unittest.IsolatedAsyncioTestCase):
             await worker.run_job({}, "job-narration")
 
         self.assertEqual(narration_mock.await_args.kwargs["word_count"], 400)
+        self.assertIsNone(narration_mock.await_args.kwargs["google_tts_model"])
+
+    async def test_worker_passes_google_tts_model_override_when_provided(self) -> None:
+        instagram_job = {
+            "job_id": "job-instagram",
+            "status": "queued",
+            "type": "instagram",
+            "content": "<p>Hello</p>",
+            "options": {"google_tts_model": "google-tts-override"},
+            "webhook_url": None,
+        }
+        instagram_mock = AsyncMock(return_value=("/tmp/instagram.mp3", {}))
+
+        with (
+            patch("app.worker.get_job", AsyncMock(return_value=instagram_job)),
+            patch("app.worker.update_job", AsyncMock()),
+            patch("app.worker.instagram.generate_instagram_audio", instagram_mock),
+            patch("app.worker.upload_audio", Mock(return_value="https://example.com/instagram.mp3")),
+            patch("app.worker._duration", Mock(return_value=12.3)),
+        ):
+            await worker.run_job({}, "job-instagram")
+
+        self.assertEqual(
+            instagram_mock.await_args.kwargs["google_tts_model"],
+            "google-tts-override",
+        )
 
 
 class PodcastTtsPauseRegressionTests(unittest.TestCase):

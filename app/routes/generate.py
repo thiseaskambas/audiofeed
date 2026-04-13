@@ -27,7 +27,7 @@ class GenerateOptions(BaseModel):
     style: str = "engaging,fast-paced"
     # Gemini TTS controls (google tts_provider only)
     google_voice: str | None = None
-    google_tts_model: str = "gemini-2.5-flash-preview-tts"
+    google_tts_model: str | None = None
     tts_style_prompt: str | None = None
     # Podcast multi-speaker voices — Gemini (tts_provider=google)
     podcast_voice1: str = "Puck"           # Host voice

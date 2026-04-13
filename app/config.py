@@ -26,9 +26,13 @@ class Settings(BaseSettings):
 
     # OpenAI (required if llm_provider=openai or tts_provider=openai)
     openai_api_key: str | None = None
+    openai_llm_model: str = "gpt-4o-mini"
+    openai_tts_model: str = "tts-1-hd"
 
     # Google (required if llm_provider=google or tts_provider=google)
     google_api_key: str | None = None
+    google_llm_model: str = "gemini-2.5-flash"
+    google_tts_model: str = "gemini-2.5-flash-preview-tts"
 
     # NotebookLM Enterprise (required for type="notebooklm_podcast")
     # Auth is via GOOGLE_APPLICATION_CREDENTIALS service account (ADC)

@@ -58,7 +58,7 @@ def _dialog_openai(
     if instructions:
         system_content += f"\n\nAdditional instructions:\n{instructions}"
     resp = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.openai_llm_model,
         messages=[
             {"role": "system", "content": system_content},
             {"role": "user", "content": f"Article:\n\n{content[:15000]}"},
@@ -92,7 +92,7 @@ def _dialog_google(
         prompt += f"\n\nAdditional instructions:\n{instructions}"
     prompt += f"\n\nArticle:\n\n{content[:15000]}\n\nDialogue:"
     r = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model=settings.google_llm_model,
         contents=prompt,
         config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_budget=0),
@@ -210,7 +210,7 @@ def _tts_openai_turns(
             continue
         total_chars += len(text)
         with client.audio.speech.with_streaming_response.create(
-            model="tts-1-hd",
+            model=settings.openai_tts_model,
             voice=voice,
             input=text[:4096],
         ) as response:
@@ -264,7 +264,7 @@ async def generate_podcast_audio(
     voice2: str = "Charon",
     openai_voice1: str = "alloy",
     openai_voice2: str = "echo",
-    google_tts_model: str = "gemini-2.5-flash-preview-tts",
+    google_tts_model: str | None = None,
     instructions: str | None = None,
 ) -> tuple[str, dict]:
     """Strip HTML → LLM dialogue → TTS → MP3. Returns (path, token_usage)."""
@@ -289,7 +289,14 @@ async def generate_podcast_audio(
         raise ValueError("LLM returned an empty transcript")
 
     if settings.tts_provider == "google":
-        tts_usage = _tts_gemini_multispeaker(transcript, out_path, voice1, voice2, google_tts_model, language)
+        tts_usage = _tts_gemini_multispeaker(
+            transcript,
+            out_path,
+            voice1,
+            voice2,
+            google_tts_model or settings.google_tts_model,
+            language,
+        )
     else:
         tts_usage = _tts_openai_turns(transcript, out_path, voice1=openai_voice1, voice2=openai_voice2)
 

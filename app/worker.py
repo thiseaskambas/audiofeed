@@ -50,7 +50,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
                 voice2=opts.get("podcast_voice2", "Charon"),
                 openai_voice1=opts.get("podcast_openai_voice1", "alloy"),
                 openai_voice2=opts.get("podcast_openai_voice2", "echo"),
-                google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
+                google_tts_model=opts.get("google_tts_model"),
                 instructions=opts.get("podcast_instructions"),
             )
             prefix = "podcast"
@@ -59,7 +59,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
                 content, language=opts.get("language", "en"),
                 voice=opts.get("voice", "alloy"), word_count=opts.get("word_count", 400),
                 google_voice=opts.get("google_voice", "Charon"),
-                google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
+                google_tts_model=opts.get("google_tts_model"),
                 tts_style_prompt=opts.get("tts_style_prompt"),
             )
             prefix = "narration"
@@ -67,7 +67,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
             path, token_usage = await instagram.generate_instagram_audio(
                 content, language=opts.get("language", "en"),
                 google_voice=opts.get("google_voice", "Aoede"),
-                google_tts_model=opts.get("google_tts_model", "gemini-2.5-flash-preview-tts"),
+                google_tts_model=opts.get("google_tts_model"),
                 tts_style_prompt=opts.get("tts_style_prompt"),
             )
             prefix = "instagram"

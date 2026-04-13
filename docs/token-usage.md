@@ -51,13 +51,13 @@ Tokens (or characters) consumed by the text-to-speech step.
 
 ### OpenAI (`provider=openai`)
 
-- **LLM** (`gpt-4o-mini`): returns token counts via `response.usage`.
-- **TTS** (`tts-1-hd`): billed per character, not per token. `input_characters` is set; token fields are `null`.
+- **LLM** (`OPENAI_LLM_MODEL`): returns token counts via `response.usage`.
+- **TTS** (`OPENAI_TTS_MODEL`): billed per character, not per token. `input_characters` is set; token fields are `null`.
 
 ### Google (`provider=google`)
 
-- **LLM** (`gemini-2.5-flash`): returns token counts via `response.usage_metadata`.
-- **TTS** (`gemini-2.5-flash-preview-tts`): also returns token counts via `response.usage_metadata`. `input_characters` is `null`.
+- **LLM** (`GOOGLE_LLM_MODEL`): returns token counts via `response.usage_metadata`.
+- **TTS** (`google_tts_model` request option or `GOOGLE_TTS_MODEL` env default): also returns token counts via `response.usage_metadata`. `input_characters` is `null`.
 
 ## Job types
 
@@ -82,7 +82,7 @@ returns full `token_usage` like the other types.
 
 ### OpenAI TTS cost estimation
 
-Since OpenAI TTS is billed per character, use `tts.input_characters` with the current pricing for `tts-1-hd` to estimate cost. As of early 2026, pricing is $30 / 1M characters.
+Since OpenAI TTS is billed per character, use `tts.input_characters` with the current pricing for your configured `OPENAI_TTS_MODEL` to estimate cost. As of early 2026, `tts-1-hd` pricing is $30 / 1M characters.
 
 ### NotebookLM podcast
 

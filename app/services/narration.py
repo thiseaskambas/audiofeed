@@ -28,7 +28,7 @@ def _script_openai(content: str, language: str, max_words: int) -> tuple[str, di
     lang_instruction = "Keep the script in English." if language == "en" else f"Keep the script in {language}."
     word_limit_instruction = f"Limit the script to {max_words} words maximum."
     resp = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.openai_llm_model,
         messages=[
             {
                 "role": "system",
@@ -59,7 +59,7 @@ Article:
 {content[:15000]}
 
 Produce the narration script (max {max_words} words):"""
-    r = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    r = client.models.generate_content(model=settings.google_llm_model, contents=prompt)
     usage = {
         "input_tokens": r.usage_metadata.prompt_token_count,
         "output_tokens": r.usage_metadata.candidates_token_count,
@@ -74,7 +74,7 @@ def _tts_openai(script: str, voice: str, out_path: str) -> dict:
     client = OpenAI(api_key=settings.openai_api_key)
     tts_input = script[:4096]
     with client.audio.speech.with_streaming_response.create(
-        model="tts-1-hd",
+        model=settings.openai_tts_model,
         voice=voice or "alloy",
         input=tts_input,
     ) as response:
@@ -130,7 +130,7 @@ async def generate_narration_audio(
     voice: str = "alloy",
     word_count: int = 400,
     google_voice: str = "Charon",
-    google_tts_model: str = "gemini-2.5-flash-preview-tts",
+    google_tts_model: str | None = None,
     tts_style_prompt: str | None = None,
 ) -> tuple[str, dict]:
     """Strip HTML → LLM script → TTS → write to temp file. Returns (path, token_usage)."""
@@ -150,6 +150,12 @@ async def generate_narration_audio(
     if settings.tts_provider == "openai":
         tts_usage = _tts_openai(script, voice, out_path)
     else:
-        tts_usage = _tts_gemini(script, out_path, language, google_voice, google_tts_model)
+        tts_usage = _tts_gemini(
+            script,
+            out_path,
+            language,
+            google_voice,
+            google_tts_model or settings.google_tts_model,
+        )
 
     return out_path, {"llm": llm_usage, "tts": tts_usage}

@@ -131,8 +131,7 @@ paths:
                       description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). If omitted, narration defaults to Charon and instagram defaults to Aoede. Used by: narration, instagram (TTS_PROVIDER=google only)."
                     google_tts_model:
                       type: string
-                      default: gemini-2.5-flash-preview-tts
-                      description: "Gemini TTS model ID. Used by: narration, instagram, podcast (TTS_PROVIDER=google only)."
+                      description: "Optional Gemini TTS model ID override. If omitted, the server uses GOOGLE_TTS_MODEL from environment. Used by: narration, instagram, podcast (TTS_PROVIDER=google only)."
                     tts_style_prompt:
                       type: string
                       nullable: true
