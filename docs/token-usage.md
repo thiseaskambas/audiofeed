@@ -66,6 +66,7 @@ Tokens (or characters) consumed by the text-to-speech step.
 | `narration` | populated with `llm` + `tts` |
 | `instagram` | populated with `llm` + `tts` |
 | `podcast` | populated with `llm` + `tts` |
+| `notebooklm_podcast` | `{ "notebooklm": { "operation": "<operation-name>" } }` — no token counts |
 
 ## Notes
 
@@ -82,3 +83,19 @@ returns full `token_usage` like the other types.
 ### OpenAI TTS cost estimation
 
 Since OpenAI TTS is billed per character, use `tts.input_characters` with the current pricing for `tts-1-hd` to estimate cost. As of early 2026, pricing is $30 / 1M characters.
+
+### NotebookLM podcast
+
+The `notebooklm_podcast` type bypasses the LLM and TTS steps entirely — generation happens inside Google's API. Token counts are not exposed by the NotebookLM API, so `token_usage` only contains the operation name for traceability:
+
+```json
+{
+  "token_usage": {
+    "notebooklm": {
+      "operation": "projects/my-project/locations/global/operations/abc123"
+    }
+  }
+}
+```
+
+Billing for NotebookLM Enterprise is managed through your Google Cloud contract — consult your Google account team for pricing details.

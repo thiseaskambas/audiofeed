@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # Google (required if llm_provider=google or tts_provider=google)
     google_api_key: str | None = None
 
+    # NotebookLM Enterprise (required for type="notebooklm_podcast")
+    # Auth is via GOOGLE_APPLICATION_CREDENTIALS service account (ADC)
+    notebooklm_project_id: str | None = None
+    notebooklm_location: str = "global"
+    notebooklm_daily_limit: int = 20  # Google's default quota per identity per day
+
     # Sevalla S3
     s3_endpoint_url: str = ""
     s3_public_url: str = ""  # public base URL for generated audio links (e.g. https://bucket.sevalla.storage)

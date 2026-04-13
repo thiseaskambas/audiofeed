@@ -6,7 +6,7 @@ import arq
 from arq.connections import RedisSettings
 from app.config import get_settings
 from app.jobs import init_redis, get_job, update_job
-from app.services import podcast, narration, instagram
+from app.services import podcast, narration, instagram, notebooklm
 from app.services.storage import upload_audio
 from app.services.webhook import fire_webhook
 
@@ -71,6 +71,15 @@ async def run_job(ctx: dict, job_id: str) -> None:
                 tts_style_prompt=opts.get("tts_style_prompt"),
             )
             prefix = "instagram"
+        elif job["type"] == "notebooklm_podcast":
+            path, token_usage = await notebooklm.generate_notebooklm_podcast(
+                content,
+                language=opts.get("language", "en"),
+                length=opts.get("notebooklm_length", "STANDARD"),
+                focus=opts.get("notebooklm_focus"),
+                job_id=job_id,
+            )
+            prefix = "notebooklm_podcast"
         else:
             await update_job(job_id, status="failed", error=f"Unknown type: {job['type']}")
             await _maybe_webhook(job)

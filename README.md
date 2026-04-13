@@ -1,6 +1,6 @@
 # Audiofeed
 
-Python REST microservice that turns article content (HTML or plain text) into audio. Supports three output types: **podcast** (two-speaker dialogue), **narration** (single speaker), and **Instagram voiceover** (punchy ~60-word hook). Jobs are processed asynchronously; results are uploaded to S3 and optionally delivered via webhook.
+Python REST microservice that turns article content (HTML or plain text) into audio. Supports four output types: **podcast** (two-speaker dialogue), **narration** (single speaker), **Instagram voiceover** (punchy ~60-word hook), and **NotebookLM podcast** (end-to-end generation via Google's NotebookLM Enterprise API). Jobs are processed asynchronously; results are uploaded to S3 and optionally delivered via webhook.
 
 ## Stack
 
@@ -11,6 +11,7 @@ Python REST microservice that turns article content (HTML or plain text) into au
 | LLM (scripts & dialogue) | OpenAI `gpt-4o-mini` or Google `gemini-2.5-flash` |
 | TTS | OpenAI `tts-1-hd` or Google Gemini TTS (`gemini-2.5-flash-preview-tts`) |
 | Podcast TTS | Google Gemini multi-speaker TTS (single API call, two voices) |
+| NotebookLM podcast | Google NotebookLM Enterprise API (end-to-end, no LLM/TTS steps) |
 | Storage | boto3 → Sevalla S3 |
 | Auth | `X-API-Key` header (shared secret) |
 
@@ -28,23 +29,30 @@ POST /generate
       ▼ (ARQ worker, runs in same process)
   run_job(job_id)
       │
-      ├─ type=podcast  ──► podcast.generate_podcast_audio()
-      │                         │
-      │                    1. strip HTML
-      │                    2. LLM writes Host:/Guest: dialogue
-      │                    3. Gemini multi-speaker TTS → PCM → MP3
+      ├─ type=podcast  ──────────► podcast.generate_podcast_audio()
+      │                                │
+      │                           1. strip HTML
+      │                           2. LLM writes Host:/Guest: dialogue
+      │                           3. Gemini multi-speaker TTS → PCM → MP3
       │
-      ├─ type=narration ─► narration.generate_narration_audio()
-      │                         │
-      │                    1. strip HTML
-      │                    2. LLM writes spoken script
-      │                    3. TTS → MP3
+      ├─ type=narration ─────────► narration.generate_narration_audio()
+      │                                │
+      │                           1. strip HTML
+      │                           2. LLM writes spoken script
+      │                           3. TTS → MP3
       │
-      └─ type=instagram ─► instagram.generate_instagram_audio()
-                                │
-                           1. strip HTML
-                           2. LLM writes ~60-word hook
-                           3. TTS → MP3
+      ├─ type=instagram ─────────► instagram.generate_instagram_audio()
+      │                                │
+      │                           1. strip HTML
+      │                           2. LLM writes ~60-word hook
+      │                           3. TTS → MP3
+      │
+      └─ type=notebooklm_podcast ─► notebooklm.generate_notebooklm_podcast()
+                                       │
+                                  1. strip HTML
+                                  2. POST to NotebookLM Enterprise API
+                                  3. poll long-running operation (~10s intervals)
+                                  4. download finished MP3
       │
       ▼
   upload to S3
@@ -68,6 +76,7 @@ app/
     ├── podcast.py        # Dialogue LLM + Gemini multi-speaker TTS
     ├── narration.py      # Script LLM + single-voice TTS
     ├── instagram.py      # Hook LLM + single-voice TTS
+    ├── notebooklm.py     # NotebookLM Enterprise API (end-to-end podcast)
     ├── storage.py        # S3 upload → public URL
     ├── webhook.py        # Async HTTP POST callback
     └── html_utils.py     # strip_html() + to_bcp47()
@@ -124,6 +133,33 @@ Returns `(path_to_mp3, token_usage_dict)`.
 
 ---
 
+### NotebookLM podcast (type=`notebooklm_podcast`)
+
+End-to-end podcast generation via [Google NotebookLM Enterprise API](https://cloud.google.com/gemini/enterprise/notebooklm-enterprise/docs/podcast-api). Unlike the `podcast` type, there is no separate LLM dialogue step or TTS step — NotebookLM generates both the conversation script and the audio in a single black-box API call.
+
+**Prerequisites**: NotebookLM Enterprise requires allowlist approval from Google, a Google Cloud project with the Discovery Engine API enabled, and a service account with the `roles/discoveryengine.podcastApiUser` IAM role. See [Setup — NotebookLM](#notebooklm-setup) below.
+
+**Pipeline**:
+1. Strip HTML via `html_utils.strip_html()` → plain text
+2. Map language code to BCP-47 via `html_utils.to_bcp47()`
+3. Check the Redis daily usage counter — raise if the daily limit is reached
+4. Obtain an OAuth2 access token via Application Default Credentials (ADC)
+5. `POST .../projects/{project}/locations/{location}:generatePodcast` with the text content
+6. Poll the returned long-running operation every 10 s (up to 10 minutes)
+7. Download the completed MP3 via `:download?alt=media`
+
+**Length options**:
+- `SHORT` — ~4–5 minutes
+- `STANDARD` — ~10 minutes (default)
+
+**Quota**: Google enforces a limit of ~20 podcasts per Google Cloud identity per day. The service tracks usage in Redis (`notebooklm:daily_usage:{YYYY-MM-DD}`) and rejects requests before they hit the API if the limit is reached.
+
+**token_usage** for this type: `{ "notebooklm": { "operation": "<operation-name>" } }`. Google does not expose token counts for this API.
+
+Returns `(path_to_mp3, token_usage_dict)`.
+
+---
+
 ### Instagram voiceover (type=`instagram`)
 
 Short punchy hook, ~15–30 s.
@@ -174,6 +210,22 @@ docker build -t audiofeed .
 docker run -p 8020:8020 --env-file .env audiofeed
 ```
 
+### NotebookLM setup
+
+Required only for `type="notebooklm_podcast"`.
+
+1. Create or select a Google Cloud project and [enable the Discovery Engine API](https://console.cloud.google.com/apis/library/discoveryengine.googleapis.com).
+2. Create a service account and grant it the `roles/discoveryengine.podcastApiUser` IAM role.
+3. Download the service account key JSON.
+4. Add to `.env`:
+   ```
+   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+   NOTEBOOKLM_PROJECT_ID=your-gcp-project-id
+   ```
+5. [Request allowlist access](https://cloud.google.com/gemini/enterprise/notebooklm-enterprise/docs/podcast-api) from Google (NotebookLM Enterprise requires approval).
+
+---
+
 ### Health check
 
 ```bash
@@ -202,6 +254,10 @@ Raw OpenAPI spec: http://localhost:8020/openapi.yaml
 | `API_SECRET` | yes | — | Shared secret checked against the `X-API-Key` header |
 | `REDIS_URL` | no | `redis://localhost:6379` | Redis connection string |
 | `PORT` | no | `8020` | Server port (used by `python -m app.main` and Docker) |
+| `NOTEBOOKLM_PROJECT_ID` | if using `notebooklm_podcast` | — | GCP project ID that has the Discovery Engine API enabled |
+| `NOTEBOOKLM_LOCATION` | no | `global` | GCP location for the NotebookLM API endpoint |
+| `NOTEBOOKLM_DAILY_LIMIT` | no | `20` | Max NotebookLM podcasts per day (mirrors Google's quota) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | if using `notebooklm_podcast` | — | Path to service account JSON with `roles/discoveryengine.podcastApiUser` |
 
 > **Typical mixed config** (OpenAI for LLM, Gemini for TTS):
 > ```
@@ -275,7 +331,7 @@ X-API-Key: <secret>
 
 ```jsonc
 {
-  "type": "podcast",                 // required — "podcast" | "narration" | "instagram"
+  "type": "podcast",                 // required — "podcast" | "narration" | "instagram" | "notebooklm_podcast"
   "content": "<p>Article...</p>",    // required — HTML or plain text
   "webhook_url": "https://...",      // optional — called on completion or failure
   "options": { ... },                // optional — see below
@@ -310,6 +366,8 @@ All fields are optional. Fields irrelevant to the current `type` or provider are
 | `google_voice` | string | `"Charon"` (narration) / `"Aoede"` (instagram) | `narration`, `instagram` (`TTS_PROVIDER=google`) | Gemini prebuilt voice name. |
 | `google_tts_model` | string | `"gemini-2.5-flash-preview-tts"` | `narration`, `instagram`, `podcast` (`TTS_PROVIDER=google`) | Gemini TTS model ID. |
 | `tts_style_prompt` | string | `null` | `narration`, `instagram` | Free-text delivery instruction appended to the LLM prompt (e.g. `"Speak slowly and warmly."`). |
+| `notebooklm_length` | `"SHORT"` \| `"STANDARD"` | `"STANDARD"` | `notebooklm_podcast` | Podcast length. `SHORT` ≈ 4–5 min, `STANDARD` ≈ 10 min. |
+| `notebooklm_focus` | string | `null` | `notebooklm_podcast` | Optional topic focus hint passed to NotebookLM (e.g. `"Focus on the economic implications"`). |
 
 **Available Gemini prebuilt voices**: `Aoede`, `Charon`, `Fenrir`, `Kore`, `Puck` (and others — check the Gemini TTS docs for the full list).
 
@@ -430,6 +488,27 @@ curl -X POST http://localhost:8020/generate \
   }'
 ```
 
+### NotebookLM podcast
+
+```bash
+curl -X POST http://localhost:8020/generate \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-secret" \
+  -d '{
+    "type": "notebooklm_podcast",
+    "content": "<h1>The Future of AI</h1><p>Long article body...</p>",
+    "webhook_url": "https://webhook.site/your-id",
+    "tenant_id": "acme",
+    "options": {
+      "language": "en",
+      "notebooklm_length": "STANDARD",
+      "notebooklm_focus": "Focus on practical implications for businesses"
+    }
+  }'
+```
+
+> NotebookLM jobs take significantly longer than other types (the operation can run for several minutes). Use `webhook_url` instead of polling to avoid holding open connections.
+
 ### Poll until done
 
 ```bash
@@ -462,6 +541,8 @@ audiofeed/
   narration/{filename}.mp3
   {tenant_id}/instagram/{filename}.mp3
   instagram/{filename}.mp3
+  {tenant_id}/notebooklm_podcast/{filename}.mp3
+  notebooklm_podcast/{filename}.mp3
 ```
 
 `S3_PUBLIC_URL` is used as the base for the returned `audio_url`. Falls back to `S3_ENDPOINT_URL` if `S3_PUBLIC_URL` is not set.

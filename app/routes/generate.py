@@ -17,7 +17,7 @@ router = APIRouter()
 
 # --- Schemas ---
 
-GenerateType = Literal["podcast", "narration", "instagram"]
+GenerateType = Literal["podcast", "narration", "instagram", "notebooklm_podcast"]
 
 
 class GenerateOptions(BaseModel):
@@ -37,6 +37,9 @@ class GenerateOptions(BaseModel):
     podcast_openai_voice2: str = "echo"    # Guest voice
     # Podcast LLM script customisation
     podcast_instructions: str | None = None  # Free-text instructions for the dialogue writer
+    # NotebookLM podcast options (type="notebooklm_podcast" only)
+    notebooklm_length: Literal["SHORT", "STANDARD"] = "STANDARD"
+    notebooklm_focus: str | None = None    # Optional topic focus hint for NotebookLM
 
 
 class GenerateRequest(BaseModel):
