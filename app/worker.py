@@ -44,7 +44,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
             path, token_usage = await podcast.generate_podcast_audio(
                 content,
                 language=opts.get("language", "en"),
-                word_count=opts.get("word_count", 400),
+                word_count=opts.get("word_count", 600),
                 style=opts.get("style", "engaging,fast-paced"),
                 voice1=opts.get("podcast_voice1", "Puck"),
                 voice2=opts.get("podcast_voice2", "Charon"),

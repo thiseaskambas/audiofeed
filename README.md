@@ -102,7 +102,7 @@ Host: Good point. Now, the data shows...
 
 Every line must begin with exactly `Host: ` or `Guest: ` (colon + space). No markdown, no stage directions, no blank lines. The `style` option is passed as a hint (e.g. `"educational,conversational"`).
 
-- `LLM_PROVIDER=openai` → GPT-4o-mini, `max_tokens = min(word_count × 2, 4000)`
+- `LLM_PROVIDER=openai` → GPT-4o-mini, `max_tokens = min(word_count × 3, 8000)`
 - `LLM_PROVIDER=google` → Gemini 2.5 Flash with `thinking_budget=0` (disables the reasoning scratchpad that would otherwise pollute the output)
 
 **Step 2 — Audio synthesis (TTS)**
@@ -355,7 +355,7 @@ All fields are optional. Fields irrelevant to the current `type` or provider are
 | Field | Type | Default | Applies to | Description |
 |---|---|---|---|---|
 | `language` | string | `"en"` | all types | ISO 639-1 code (e.g. `"en"`, `"el"`, `"fr"`). Controls LLM output language and TTS voice language. |
-| `word_count` | integer 50–2000 | `400` | `podcast`, `narration` | Target dialogue/script length in words. |
+| `word_count` | integer 50–4000 | `600` | `podcast`, `narration` | Target dialogue/script length in words. |
 | `style` | string | `"engaging,fast-paced"` | `podcast` | Comma-separated style hints for the dialogue LLM (e.g. `"educational,calm"`). |
 | `voice` | string | `"alloy"` | `narration` (`TTS_PROVIDER=openai`) | OpenAI TTS voice: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
 | `podcast_voice1` | string | `"Puck"` | `podcast` (`TTS_PROVIDER=google`) | Gemini prebuilt voice for the podcast host. |

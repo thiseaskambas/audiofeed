@@ -16,11 +16,27 @@ _TMP_DIR = os.path.join(_BASE_DIR, "data", "audio", "tmp")
 
 DIALOG_SYSTEM = """You are a podcast scriptwriter. Given an article, write a natural two-person podcast dialogue.
 
-Rules:
+Speaker roles:
+- Host: a curious, enthusiastic interviewer. Asks questions, reacts with surprise or delight, keeps the conversation moving.
+- Guest: a knowledgeable, articulate explainer. Digs into detail, gives examples, occasionally qualifies or corrects themselves.
+
+Naturalness rules — these are mandatory, not optional:
+- Include disfluencies: um, uh, you know, I mean, like, kind of, sort of, actually, basically.
+- Include back-channel responses on their own turn: "Right.", "Exactly.", "Yeah, totally.", "Mm-hmm.", "That makes sense.", "Fascinating.", "No kidding."
+- Include false starts and self-corrections: "It's basically—well, it's more nuanced than that."
+- Include genuine reactions: "Wait, really?", "Oh, that's interesting.", "Huh, I hadn't thought of that.", "Wow.", "That's wild."
+- Vary turn lengths naturally: short punchy reactions (1-2 sentences) mixed with longer explanations (4-6 sentences).
+- Use contractions throughout: it's, that's, we're, isn't, can't, don't, I've, you'd.
+
+Structure:
+1. Warm, natural intro where Host sets up the topic casually (not formally).
+2. Main discussion broken into 3-5 natural topic segments with back-and-forth.
+3. Brief, conversational conclusion — no formal sign-offs.
+
+Format rules (strict — the audio pipeline depends on these):
 - Every line must start with exactly "Host: " or "Guest: " (word, colon, space, then speech).
 - No stage directions, no markdown, no bullet points, no blank lines between turns.
-- Natural spoken language: contractions, short sentences, back-and-forth flow.
-- Keep within the requested word count.
+- Do not include any line that does not start with "Host: " or "Guest: ".
 - Write entirely in the language of the article unless instructed otherwise."""
 
 
@@ -47,7 +63,7 @@ def _dialog_openai(
             {"role": "system", "content": system_content},
             {"role": "user", "content": f"Article:\n\n{content[:15000]}"},
         ],
-        max_tokens=min(word_count * 2, 4000),
+        max_tokens=min(word_count * 3, 8000),
     )
     usage = {
         "input_tokens": resp.usage.prompt_tokens if resp.usage else None,
@@ -204,9 +220,10 @@ def _tts_openai_turns(
     if not segments:
         raise ValueError("No dialogue turns found in transcript")
 
+    pause = AudioSegment.silent(duration=200)
     combined = segments[0]
     for seg in segments[1:]:
-        combined = combined + seg
+        combined = combined + pause + seg
     combined.export(out_path, format="mp3")
 
     return {"input_characters": total_chars, "input_tokens": None, "output_tokens": None, "total_tokens": None}
@@ -241,7 +258,7 @@ async def generate_podcast_audio(
     content: str,
     *,
     language: str = "en",
-    word_count: int = 400,
+    word_count: int = 600,
     style: str = "engaging,fast-paced",
     voice1: str = "Puck",
     voice2: str = "Charon",

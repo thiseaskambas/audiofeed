@@ -5,9 +5,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 if "arq" not in sys.modules:
-    sys.modules["arq"] = SimpleNamespace(ArqRedis=object)
+    arq_module = types_std.ModuleType("arq")
+    arq_module.ArqRedis = object
+    arq_connections = types_std.ModuleType("arq.connections")
+    arq_connections.RedisSettings = SimpleNamespace(from_dsn=lambda _dsn: None)
+    sys.modules["arq"] = arq_module
+    sys.modules["arq.connections"] = arq_connections
 
 from app.routes.generate import GenerateOptions, GenerateRequest, generate
+from app import worker
 from app.services import instagram, narration, podcast
 
 
@@ -197,6 +203,91 @@ class PodcastDialogInstructionsTests(unittest.TestCase):
             "Use names from the briefing.\n\nArticle:\n\nArt text",
             prompt,
         )
+
+    def test_openai_dialog_uses_expanded_max_tokens_formula(self) -> None:
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Host: Hi.\nGuest: Hey."))],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2, total_tokens=3),
+        )
+        create_mock = Mock(return_value=response)
+        client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+        )
+        fake_openai = SimpleNamespace(OpenAI=Mock(return_value=client))
+        fake_settings = SimpleNamespace(openai_api_key="sk-test")
+
+        with (
+            patch.dict(sys.modules, {"openai": fake_openai}),
+            patch("app.services.podcast.get_settings", return_value=fake_settings),
+        ):
+            podcast._dialog_openai("Article body", "en", 600, "educational")
+
+        self.assertEqual(create_mock.call_args.kwargs["max_tokens"], 1800)
+
+
+class GenerateOptionsSchemaRegressionTests(unittest.TestCase):
+    def test_word_count_default_is_600(self) -> None:
+        self.assertEqual(GenerateOptions().word_count, 600)
+
+    def test_word_count_accepts_4000_and_rejects_4001(self) -> None:
+        self.assertEqual(GenerateOptions(word_count=4000).word_count, 4000)
+        with self.assertRaises(Exception):
+            GenerateOptions(word_count=4001)
+
+
+class WorkerDefaultsRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_podcast_worker_default_word_count_is_600(self) -> None:
+        podcast_job = {
+            "job_id": "job-podcast",
+            "status": "queued",
+            "type": "podcast",
+            "content": "<p>Hello</p>",
+            "options": {},
+            "webhook_url": None,
+        }
+        podcast_mock = AsyncMock(return_value=("/tmp/podcast.mp3", {}))
+
+        with (
+            patch("app.worker.get_job", AsyncMock(return_value=podcast_job)),
+            patch("app.worker.update_job", AsyncMock()),
+            patch("app.worker.podcast.generate_podcast_audio", podcast_mock),
+            patch("app.worker.upload_audio", Mock(return_value="https://example.com/podcast.mp3")),
+            patch("app.worker._duration", Mock(return_value=12.3)),
+        ):
+            await worker.run_job({}, "job-podcast")
+
+        self.assertEqual(podcast_mock.await_args.kwargs["word_count"], 600)
+
+    async def test_narration_worker_default_word_count_remains_400(self) -> None:
+        narration_job = {
+            "job_id": "job-narration",
+            "status": "queued",
+            "type": "narration",
+            "content": "<p>Hello</p>",
+            "options": {},
+            "webhook_url": None,
+        }
+        narration_mock = AsyncMock(return_value=("/tmp/narration.mp3", {}))
+
+        with (
+            patch("app.worker.get_job", AsyncMock(return_value=narration_job)),
+            patch("app.worker.update_job", AsyncMock()),
+            patch("app.worker.narration.generate_narration_audio", narration_mock),
+            patch("app.worker.upload_audio", Mock(return_value="https://example.com/narration.mp3")),
+            patch("app.worker._duration", Mock(return_value=12.3)),
+        ):
+            await worker.run_job({}, "job-narration")
+
+        self.assertEqual(narration_mock.await_args.kwargs["word_count"], 400)
+
+
+class PodcastTtsPauseRegressionTests(unittest.TestCase):
+    def test_openai_tts_source_includes_200ms_pause(self) -> None:
+        import inspect
+
+        source = inspect.getsource(podcast._tts_openai_turns)
+        self.assertIn("AudioSegment.silent(duration=200)", source)
+        self.assertIn("combined = combined + pause + seg", source)
 
 
 class PodcastChunkTranscriptTests(unittest.TestCase):

@@ -23,7 +23,7 @@ GenerateType = Literal["podcast", "narration", "instagram", "notebooklm_podcast"
 class GenerateOptions(BaseModel):
     language: str = "en"
     voice: str = "alloy"
-    word_count: int = Field(default=400, ge=50, le=2000)
+    word_count: int = Field(default=600, ge=50, le=4000)
     style: str = "engaging,fast-paced"
     # Gemini TTS controls (google tts_provider only)
     google_voice: str | None = None
