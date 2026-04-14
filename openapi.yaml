@@ -26,14 +26,14 @@ info:
 
     ## Error responses
 
-    Error responses follow FastAPI's default shape:
+    Error responses follow this shape:
     ```json
     { "detail": "<human-readable message>" }
     ```
   version: 0.1.0
 
 servers:
-  - url: http://localhost:8000
+  - url: http://localhost:8050
     description: Local
 
 paths:
@@ -43,7 +43,7 @@ paths:
       operationId: getHealth
       security: []
       responses:
-        "200":
+        '200':
           description: Service healthy
           content:
             application/json:
@@ -79,7 +79,7 @@ paths:
               properties:
                 type:
                   type: string
-                  enum: [podcast, narration, instagram]
+                  enum: [podcast, narration, instagram, notebooklm_podcast]
                 content:
                   type: string
                   description: Article HTML or plain text
@@ -114,46 +114,55 @@ paths:
                       type: string
                       default: alloy
                       enum: [alloy, echo, fable, onyx, nova, shimmer]
-                      description: "OpenAI TTS voice. Used by: narration (TTS_PROVIDER=openai only)."
+                      description: 'OpenAI TTS voice. Used by: narration (TTS_PROVIDER=openai only).'
                     word_count:
                       type: integer
                       minimum: 50
                       maximum: 4000
                       default: 600
-                      description: "Target script word count. Used by: podcast, narration."
+                      description: 'Target script word count. Used by: podcast, narration.'
                     style:
                       type: string
                       default: engaging,fast-paced
-                      description: "Comma-separated style hints for the dialogue LLM (e.g. \"educational,calm\"). Used by: podcast."
+                      description: 'Comma-separated style hints for the dialogue LLM (e.g. "educational,calm"). Used by: podcast.'
                     google_voice:
                       type: string
                       nullable: true
-                      description: "Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). If omitted, narration defaults to Charon and instagram defaults to Aoede. Used by: narration, instagram (TTS_PROVIDER=google only)."
+                      description: 'Gemini prebuilt voice name (e.g. Aoede, Charon, Fenrir, Kore, Puck). If omitted, narration defaults to Charon and instagram defaults to Aoede. Used by: narration, instagram (TTS_PROVIDER=google only).'
                     google_tts_model:
                       type: string
-                      description: "Optional Gemini TTS model ID override. If omitted, the server uses GOOGLE_TTS_MODEL from environment. Used by: narration, instagram, podcast (TTS_PROVIDER=google only)."
+                      description: 'Optional Gemini TTS model ID override. If omitted, the server uses GOOGLE_TTS_MODEL from environment. Used by: narration, instagram, podcast (TTS_PROVIDER=google only).'
                     tts_style_prompt:
                       type: string
                       nullable: true
-                      description: "Free-text delivery style instruction appended to the LLM prompt (e.g. 'Speak slowly and warmly.'). Used by: narration, instagram (TTS_PROVIDER=google only)."
+                      description: "Free-text delivery style instruction appended to the LLM prompt (e.g. 'Speak slowly and warmly.'). Used by: narration, instagram (LLM_PROVIDER=google only)."
+                    notebooklm_length:
+                      type: string
+                      enum: [SHORT, STANDARD]
+                      default: STANDARD
+                      description: 'Target podcast length for NotebookLM generation. SHORT is approximately 4-5 minutes; STANDARD is approximately 10 minutes. Used by: notebooklm_podcast.'
+                    notebooklm_focus:
+                      type: string
+                      nullable: true
+                      description: 'Optional topic-focus hint passed through to NotebookLM to bias the generated podcast toward a specific angle. Used by: notebooklm_podcast.'
                     podcast_voice1:
                       type: string
                       default: Puck
-                      description: "Gemini prebuilt voice for the podcast host. Used by: podcast (TTS_PROVIDER=google only). See google_voice for available names."
+                      description: 'Gemini prebuilt voice for the podcast host. Used by: podcast (TTS_PROVIDER=google only). See google_voice for available names.'
                     podcast_voice2:
                       type: string
                       default: Charon
-                      description: "Gemini prebuilt voice for the podcast guest. Used by: podcast (TTS_PROVIDER=google only). See google_voice for available names."
+                      description: 'Gemini prebuilt voice for the podcast guest. Used by: podcast (TTS_PROVIDER=google only). See google_voice for available names.'
                     podcast_openai_voice1:
                       type: string
                       default: alloy
                       enum: [alloy, echo, fable, onyx, nova, shimmer]
-                      description: "OpenAI TTS voice for the podcast host. Used by: podcast (TTS_PROVIDER=openai only)."
+                      description: 'OpenAI TTS voice for the podcast host. Used by: podcast (TTS_PROVIDER=openai only).'
                     podcast_openai_voice2:
                       type: string
                       default: echo
                       enum: [alloy, echo, fable, onyx, nova, shimmer]
-                      description: "OpenAI TTS voice for the podcast guest. Used by: podcast (TTS_PROVIDER=openai only)."
+                      description: 'OpenAI TTS voice for the podcast guest. Used by: podcast (TTS_PROVIDER=openai only).'
                     podcast_instructions:
                       type: string
                       nullable: true
@@ -163,7 +172,7 @@ paths:
                         names and biographies, a custom introduction, an outro call-to-action, or
                         preferred framing. Used by: podcast only.
       responses:
-        "202":
+        '202':
           description: Job queued
           content:
             application/json:
@@ -177,7 +186,7 @@ paths:
                   status:
                     type: string
                     enum: [queued]
-        "401":
+        '401':
           description: Invalid or missing X-API-Key
           content:
             application/json:
@@ -200,7 +209,7 @@ paths:
                     schema:
                       $ref: '#/components/schemas/JobStatus'
               responses:
-                "200":
+                '200':
                   description: Webhook acknowledged
 
   /jobs/{job_id}:
@@ -217,19 +226,19 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Job status
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobStatus'
-        "401":
+        '401':
           description: Invalid or missing X-API-Key
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorDetail'
-        "404":
+        '404':
           description: Job not found (unknown ID or expired after 24 h)
           content:
             application/json:
@@ -259,7 +268,7 @@ components:
           enum: [queued, processing, completed, failed]
         type:
           type: string
-          enum: [podcast, narration, instagram]
+          enum: [podcast, narration, instagram, notebooklm_podcast]
         audio_url:
           type: string
           format: uri

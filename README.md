@@ -1,18 +1,18 @@
 # Audiofeed
 
-Python REST microservice that turns article content (HTML or plain text) into audio. Supports four output types: **podcast** (two-speaker dialogue), **narration** (single speaker), **Instagram voiceover** (punchy ~60-word hook), and **NotebookLM podcast** (end-to-end generation via Google's NotebookLM Enterprise API). Jobs are processed asynchronously; results are uploaded to S3 and optionally delivered via webhook.
+TypeScript REST microservice (Node.js) that turns article content (HTML or plain text) into audio. Supports four output types: **podcast** (two-speaker dialogue), **narration** (single speaker), **Instagram voiceover** (punchy ~60-word hook), and **NotebookLM podcast** (end-to-end generation via Google's NotebookLM Enterprise API). Jobs are processed asynchronously; results are uploaded to S3 and optionally delivered via webhook.
 
 ## Stack
 
 | Concern | Technology |
 |---|---|
-| Framework | FastAPI |
-| Job queue | ARQ + Redis (worker runs in-process) |
+| Framework | Express (Node.js) |
+| Job queue | BullMQ + Redis (worker runs in-process) |
 | LLM (scripts & dialogue) | OpenAI (`OPENAI_LLM_MODEL`) or Google (`GOOGLE_LLM_MODEL`) |
 | TTS | OpenAI (`OPENAI_TTS_MODEL`) or Google (`GOOGLE_TTS_MODEL`) |
 | Podcast TTS | Google Gemini multi-speaker TTS (single API call, two voices) |
 | NotebookLM podcast | Google NotebookLM Enterprise API (end-to-end, no LLM/TTS steps) |
-| Storage | boto3 → Sevalla S3 |
+| Storage | AWS SDK v3 → Sevalla S3 |
 | Auth | `X-API-Key` header (shared secret) |
 
 ---
@@ -23,31 +23,31 @@ Python REST microservice that turns article content (HTML or plain text) into au
 POST /generate
       │
       ▼
-  create_job()          ← Redis hash  job:{uuid}
-  enqueue run_job()     ← ARQ queue
+  jobStore.createJob()  ← Redis hash  job:{uuid}
+  audioQueue.add()      ← BullMQ queue
       │
-      ▼ (ARQ worker, runs in same process)
-  run_job(job_id)
+      ▼ (BullMQ worker, runs in same process)
+  processJob(jobId)
       │
-      ├─ type=podcast  ──────────► podcast.generate_podcast_audio()
+      ├─ type=podcast  ──────────► podcastService.generatePodcastAudio()
       │                                │
       │                           1. strip HTML
       │                           2. LLM writes Host:/Guest: dialogue
       │                           3. Gemini multi-speaker TTS → PCM → MP3
       │
-      ├─ type=narration ─────────► narration.generate_narration_audio()
+      ├─ type=narration ─────────► narrationService.generateNarrationAudio()
       │                                │
       │                           1. strip HTML
       │                           2. LLM writes spoken script
       │                           3. TTS → MP3
       │
-      ├─ type=instagram ─────────► instagram.generate_instagram_audio()
+      ├─ type=instagram ─────────► instagramService.generateInstagramAudio()
       │                                │
       │                           1. strip HTML
       │                           2. LLM writes ~60-word hook
       │                           3. TTS → MP3
       │
-      └─ type=notebooklm_podcast ─► notebooklm.generate_notebooklm_podcast()
+      └─ type=notebooklm_podcast ─► notebooklmService.generateNotebooklmPodcast()
                                        │
                                   1. strip HTML
                                   2. POST to NotebookLM Enterprise API
@@ -65,21 +65,37 @@ POST /generate
 ## Project structure
 
 ```
-app/
-├── main.py              # FastAPI app + lifespan: startup validation, Redis init, ARQ worker
-├── config.py            # Pydantic settings loaded from .env
-├── jobs.py              # Redis-backed job store (create / get / update)
-├── worker.py            # ARQ worker function run_job()
-├── routes/
-│   └── generate.py      # POST /generate  GET /jobs/{id}  GET /health
-└── services/
-    ├── podcast.py        # Dialogue LLM + Gemini multi-speaker TTS
-    ├── narration.py      # Script LLM + single-voice TTS
-    ├── instagram.py      # Hook LLM + single-voice TTS
-    ├── notebooklm.py     # NotebookLM Enterprise API (end-to-end podcast)
-    ├── storage.py        # S3 upload → public URL
-    ├── webhook.py        # Async HTTP POST callback
-    └── html_utils.py     # strip_html() + to_bcp47()
+index.ts                          # Entry point — creates HTTP server, starts Express app
+src/
+├── app.ts                        # Express app: middleware stack, router mount
+├── controllers/v1/
+│   └── generateController.ts     # Route handlers: generate, getJobStatus, health
+├── middleware/
+│   └── apiKeyMiddleware.ts       # X-API-Key auth
+├── queues/
+│   └── audioQueue.ts             # BullMQ queue definition + processJob() worker
+├── routes/v1/
+│   └── generateRoutes.ts         # Route definitions (POST /generate, GET /jobs/:id, GET /health, /docs, /openapi.yaml)
+├── services/v1/
+│   ├── audioServices/
+│   │   ├── podcastService.ts     # Dialogue LLM + Gemini multi-speaker TTS
+│   │   ├── narrationService.ts   # Script LLM + single-voice TTS
+│   │   ├── instagramService.ts   # Hook LLM + single-voice TTS
+│   │   └── notebooklmService.ts  # NotebookLM Enterprise API (end-to-end podcast)
+│   ├── storageService.ts         # S3 upload → public URL
+│   └── webhookService.ts         # HTTP POST callback
+├── tsTypes/                      # Shared TypeScript interfaces and enums
+├── utils/
+│   ├── audioUtils.ts             # PCM → MP3 via fluent-ffmpeg, MP3 concat, duration
+│   ├── config.ts                 # Env var parsing and validation
+│   ├── htmlUtils.ts              # stripHtml() + toBcp47()
+│   ├── jobStore.ts               # Redis-backed job store (create / get / update)
+│   ├── logger.ts                 # Winston logger
+│   ├── redisClient.ts            # ioredis client
+│   └── serverStartup.ts          # Startup checks (API keys, Redis ping, tmp dir)
+tests/
+├── services.test.ts              # Unit tests — LLM/TTS service functions
+└── worker.test.ts                # Unit tests — processJob() worker logic
 ```
 
 ---
@@ -107,8 +123,8 @@ Every line must begin with exactly `Host: ` or `Guest: ` (colon + space). No mar
 
 **Step 2 — Audio synthesis (TTS)**
 
-- `TTS_PROVIDER=google` → **Gemini multi-speaker TTS**: the whole transcript is sent in a single API call using `MultiSpeakerVoiceConfig`. Speaker labels `"Host"` and `"Guest"` in the text map to two prebuilt Gemini voices (defaults: `Puck` for Host, `Charon` for Guest). If the transcript exceeds ~3000 characters it is split at turn boundaries into chunks; each chunk is synthesised separately and the resulting PCM blobs are concatenated with pydub before being encoded to MP3.
-- `TTS_PROVIDER=openai` → **OpenAI TTS per turn**: each `Host:` / `Guest:` line is sent as a separate OpenAI call using `OPENAI_TTS_MODEL` with the mapped voice, and the resulting MP3 segments are concatenated with pydub.
+- `TTS_PROVIDER=google` → **Gemini multi-speaker TTS**: the whole transcript is sent in a single API call using `MultiSpeakerVoiceConfig`. Speaker labels `"Host"` and `"Guest"` in the text map to two prebuilt Gemini voices (defaults: `Puck` for Host, `Charon` for Guest). If the transcript exceeds ~3000 characters it is split at turn boundaries into chunks; each chunk is synthesised separately and the resulting PCM blobs are concatenated before being encoded to MP3 via ffmpeg.
+- `TTS_PROVIDER=openai` → **OpenAI TTS per turn**: each `Host:` / `Guest:` line is sent as a separate OpenAI call using `OPENAI_TTS_MODEL` with the mapped voice, and the resulting MP3 segments are concatenated via ffmpeg.
 
 Returns `(path_to_mp3, token_usage_dict)`.
 
@@ -127,7 +143,7 @@ LLM and TTS providers are controlled independently:
 - `LLM_PROVIDER=openai` → model from `OPENAI_LLM_MODEL`
 - `LLM_PROVIDER=google` → model from `GOOGLE_LLM_MODEL`
 - `TTS_PROVIDER=openai` → model from `OPENAI_TTS_MODEL` with `voice` option (default `alloy`)
-- `TTS_PROVIDER=google` → Gemini TTS with `google_voice` / `google_tts_model` options; if `google_tts_model` is omitted, `GOOGLE_TTS_MODEL` is used. PCM 24kHz → MP3 via pydub
+- `TTS_PROVIDER=google` → Gemini TTS with `google_voice` / `google_tts_model` options; if `google_tts_model` is omitted, `GOOGLE_TTS_MODEL` is used. PCM 24 kHz → MP3 via ffmpeg
 
 Returns `(path_to_mp3, token_usage_dict)`.
 
@@ -178,8 +194,8 @@ Returns `(path_to_mp3, token_usage_dict)`.
 
 ### Prerequisites
 
-- Python 3.11+
-- ffmpeg (required by pydub for PCM → MP3 encoding; present in the Docker image)
+- Node.js 18+
+- ffmpeg (required for PCM → MP3 encoding)
 - A Redis instance (see below)
 
 ### Redis
@@ -188,27 +204,28 @@ The app requires Redis for the job queue.
 
 **Managed Redis** (e.g. Sevalla): set `REDIS_URL` to the connection string — no local Redis needed.
 
-**Local Redis (Docker)**:
+**Local Redis**:
 ```bash
-docker run -p 6379:6379 redis:7-alpine
+brew services start redis   # macOS
+# or: redis-server
 # Then set REDIS_URL=redis://localhost:6379 (this is the default)
 ```
 
 ### Local install
 
 ```bash
-pip install -r requirements.txt
+npm install
 cp .env.example .env
 # Edit .env — see Env vars section below
-uvicorn app.main:app --reload --port 8020
+npm run dev
 ```
 
-### Docker
+### Editor setup (on-save fixes)
 
-```bash
-docker build -t audiofeed .
-docker run -p 8020:8020 --env-file .env audiofeed
-```
+This repo applies formatting and import sorting through ESLint (not standalone Prettier formatting on save).
+
+- Workspace settings are in `.vscode/settings.json`.
+- For TypeScript files, save actions use `source.fixAll.eslint`, which applies both Prettier (`prettier/prettier`) and `simple-import-sort`.
 
 ### NotebookLM setup
 
@@ -229,12 +246,12 @@ Required only for `type="notebooklm_podcast"`.
 ### Health check
 
 ```bash
-curl http://localhost:8020/health
+curl http://localhost:8050/health
 # {"status":"healthy","llm_provider":"openai","tts_provider":"google"}
 ```
 
-Interactive Swagger UI: http://localhost:8020/docs  
-Raw OpenAPI spec: http://localhost:8020/openapi.yaml
+Interactive Swagger UI: http://localhost:8050/docs  
+Raw OpenAPI spec: http://localhost:8050/openapi.yaml
 
 ---
 
@@ -257,7 +274,7 @@ Raw OpenAPI spec: http://localhost:8020/openapi.yaml
 | `S3_BUCKET_NAME` | yes | `audiofeed-audio` | S3 bucket name |
 | `API_SECRET` | yes | — | Shared secret checked against the `X-API-Key` header |
 | `REDIS_URL` | no | `redis://localhost:6379` | Redis connection string |
-| `PORT` | no | `8020` | Server port (used by `python -m app.main` and Docker) |
+| `PORT` | no | `8050` | Server port |
 | `NOTEBOOKLM_PROJECT_ID` | if using `notebooklm_podcast` | — | GCP project ID that has the Discovery Engine API enabled |
 | `NOTEBOOKLM_LOCATION` | no | `global` | GCP location for the NotebookLM API endpoint |
 | `NOTEBOOKLM_DAILY_LIMIT` | no | `20` | Max NotebookLM podcasts per day (mirrors Google's quota) |
@@ -288,7 +305,7 @@ Returns `401` if missing or wrong.
 
 ### Error responses
 
-All error responses follow FastAPI's default shape:
+All error responses follow this shape:
 
 ```json
 { "detail": "<human-readable message>" }
@@ -296,9 +313,9 @@ All error responses follow FastAPI's default shape:
 
 | Status | When |
 |---|---|
+| `400` | Request body failed validation (missing required field, invalid type, etc.) |
 | `401` | Missing or incorrect `X-API-Key` header |
 | `404` | Unknown `job_id` or job expired (after 24 h) |
-| `422` | Request body failed validation (missing required field, wrong type, etc.) |
 
 ---
 
@@ -424,7 +441,7 @@ The call is best-effort: failures are logged and do not affect the job result. T
 ### Podcast (OpenAI LLM + Gemini TTS)
 
 ```bash
-curl -X POST http://localhost:8020/generate \
+curl -X POST http://localhost:8050/generate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-secret" \
   -d '{
@@ -444,7 +461,7 @@ curl -X POST http://localhost:8020/generate \
 ### Narration (OpenAI end-to-end)
 
 ```bash
-curl -X POST http://localhost:8020/generate \
+curl -X POST http://localhost:8050/generate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-secret" \
   -d '{
@@ -461,7 +478,7 @@ curl -X POST http://localhost:8020/generate \
 ### Narration (Google end-to-end)
 
 ```bash
-curl -X POST http://localhost:8020/generate \
+curl -X POST http://localhost:8050/generate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-secret" \
   -d '{
@@ -478,7 +495,7 @@ curl -X POST http://localhost:8020/generate \
 ### Instagram voiceover
 
 ```bash
-curl -X POST http://localhost:8020/generate \
+curl -X POST http://localhost:8050/generate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-secret" \
   -d '{
@@ -495,7 +512,7 @@ curl -X POST http://localhost:8020/generate \
 ### NotebookLM podcast
 
 ```bash
-curl -X POST http://localhost:8020/generate \
+curl -X POST http://localhost:8050/generate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-secret" \
   -d '{
@@ -516,7 +533,7 @@ curl -X POST http://localhost:8020/generate \
 ### Poll until done
 
 ```bash
-curl http://localhost:8020/jobs/b3d1f2a0-... \
+curl http://localhost:8050/jobs/b3d1f2a0-... \
   -H "X-API-Key: your-secret"
 ```
 
@@ -531,7 +548,7 @@ queued → processing → completed
 
 - Jobs expire from Redis after **24 hours**.
 - The worker makes **one attempt** (no auto-retry). On failure, `status=failed` and `error` contains the exception message.
-- The worker runs inside the FastAPI process. No separate worker process is needed.
+- The worker runs inside the Express process via BullMQ. No separate worker process is needed.
 
 ---
 

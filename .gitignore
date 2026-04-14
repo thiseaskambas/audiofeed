@@ -211,3 +211,5 @@ credentials.json
 
 data
 .idea
+node_modules
+logs/
