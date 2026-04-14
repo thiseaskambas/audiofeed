@@ -290,14 +290,19 @@ components:
           nullable: true
           description: |
             API token consumption for this job. Present for all job types.
-            The `tts` sub-object uses token fields for Google TTS and `input_characters`
-            for OpenAI TTS (billed per character).
+            Both `llm` and `tts` include a `model` field reporting the exact
+            model identifier used. The `tts` sub-object uses token fields for
+            Google TTS and `input_characters` for OpenAI TTS (billed per character).
           type: object
           properties:
             llm:
               type: object
               description: Tokens consumed by the LLM script generation step.
               properties:
+                model:
+                  type: string
+                  nullable: true
+                  description: Model identifier used for script generation (e.g. "gpt-4o-mini", "gemini-2.5-flash").
                 input_tokens:
                   type: integer
                 output_tokens:
@@ -308,6 +313,10 @@ components:
               type: object
               description: Tokens (or characters) consumed by the TTS step.
               properties:
+                model:
+                  type: string
+                  nullable: true
+                  description: Model identifier used for TTS (e.g. "tts-1-hd", "gemini-2.5-flash-preview-tts").
                 input_tokens:
                   type: integer
                   nullable: true

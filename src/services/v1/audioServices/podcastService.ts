@@ -86,6 +86,7 @@ const dialogOpenai = async (
   return {
     transcript: (resp.choices[0].message.content ?? '').trim(),
     usage: {
+      model: config.OPENAI_LLM_MODEL,
       input_tokens: resp.usage?.prompt_tokens ?? null,
       output_tokens: resp.usage?.completion_tokens ?? null,
       total_tokens: resp.usage?.total_tokens ?? null,
@@ -117,6 +118,7 @@ const dialogGoogle = async (
   return {
     transcript: (r.text ?? '').trim(),
     usage: {
+      model: config.GOOGLE_LLM_MODEL,
       input_tokens: r.usageMetadata?.promptTokenCount ?? null,
       output_tokens: r.usageMetadata?.candidatesTokenCount ?? null,
       total_tokens: r.usageMetadata?.totalTokenCount ?? null,
@@ -179,6 +181,7 @@ const ttsGeminiMultispeaker = async (
   await pcmChunksToMp3(pcmChunks, outPath);
 
   return {
+    model: ttsModel,
     input_tokens: totalInput || null,
     output_tokens: totalOutput || null,
     total_tokens: totalTokens || null,
@@ -237,6 +240,7 @@ const ttsOpenaiTurns = async (
   }
 
   return {
+    model: config.OPENAI_TTS_MODEL,
     input_characters: totalChars,
     input_tokens: null,
     output_tokens: null,

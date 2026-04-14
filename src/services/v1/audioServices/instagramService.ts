@@ -34,6 +34,7 @@ const scriptOpenai = async (
   return {
     script: (resp.choices[0].message.content ?? '').trim(),
     usage: {
+      model: config.OPENAI_LLM_MODEL,
       input_tokens: resp.usage?.prompt_tokens ?? null,
       output_tokens: resp.usage?.completion_tokens ?? null,
       total_tokens: resp.usage?.total_tokens ?? null,
@@ -62,6 +63,7 @@ const scriptGoogle = async (
   return {
     script: (r.text ?? '').trim(),
     usage: {
+      model: config.GOOGLE_LLM_MODEL,
       input_tokens: r.usageMetadata?.promptTokenCount ?? null,
       output_tokens: r.usageMetadata?.candidatesTokenCount ?? null,
       total_tokens: r.usageMetadata?.totalTokenCount ?? null,
@@ -83,6 +85,7 @@ const ttsOpenai = async (
   const buffer = Buffer.from(await response.arrayBuffer());
   fs.writeFileSync(outPath, buffer);
   return {
+    model: config.OPENAI_TTS_MODEL,
     input_characters: ttsInput.length,
     input_tokens: null,
     output_tokens: null,
@@ -117,6 +120,7 @@ const ttsGemini = async (
   const pcmBuffer = Buffer.from(base64, 'base64');
   await pcmToMp3(pcmBuffer, outPath);
   return {
+    model: ttsModel,
     input_tokens: response.usageMetadata?.promptTokenCount ?? null,
     output_tokens: response.usageMetadata?.candidatesTokenCount ?? null,
     total_tokens: response.usageMetadata?.totalTokenCount ?? null,

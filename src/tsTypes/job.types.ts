@@ -7,12 +7,14 @@ export type AudioType =
 export type LlmProvider = 'openai' | 'google';
 
 export interface TokenUsageLlm {
+  model: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
 }
 
 export interface TokenUsageTts {
+  model: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
